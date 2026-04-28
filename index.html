@@ -1476,11 +1476,22 @@ const DB = {
 
 // ─── PROGRAM TYPE LOOKUP ─────────────────────────────────────
 function normalizeStudentRecord(student = {}) {
+  const defaultChecklist = {
+    studyPlanShared: false,
+    studyPlanExplained: false,
+    homeworkAssigned: false,
+    studyPlanAdjusted: false,
+    sessionsAdjusted: false
+  };
   return {
     ...student,
     id: student.id || '',
     sessions: Array.isArray(student.sessions) ? student.sessions : [],
     pauses: Array.isArray(student.pauses) ? student.pauses : [],
+    checklist: {
+      ...defaultChecklist,
+      ...((student.checklist && typeof student.checklist === 'object') ? student.checklist : {})
+    },
     programStartPending: student.programStartPending === true,
     renewals: Array.isArray(student.renewals)
       ? student.renewals.map(renewal => ({
@@ -1490,7 +1501,18 @@ function normalizeStudentRecord(student = {}) {
           startDatePending: renewal?.startDatePending === true
         }))
       : [],
-    coachHistory: Array.isArray(student.coachHistory) ? student.coachHistory : []
+    coachHistory: Array.isArray(student.coachHistory)
+      ? student.coachHistory.map(entry => ({
+          ...entry,
+          coach: entry?.coach || '',
+          startDate: entry?.startDate || ''
+        }))
+      : [],
+    eop: {
+      strengths: '',
+      focusAreas: '',
+      ...((student.eop && typeof student.eop === 'object') ? student.eop : {})
+    }
   };
 }
 
