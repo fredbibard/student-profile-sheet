@@ -133,6 +133,14 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
   font-size: 12px; font-weight: 800;
   line-height: 1.35; white-space: nowrap;
 }
+.dashboard-pending-badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: 6px;
+  background: #FEF3C7; color: #92400E;
+  border: 1px solid #D97706;
+  font-size: 12px; font-weight: 800;
+  line-height: 1.35; white-space: nowrap;
+}
 /* Keep completed states visually green to distinguish from red missed states */
 .dot.completed { background: #16A34A; border-color: #16A34A; }
 .progress-fill { background: #86EFAC; }
@@ -934,6 +942,10 @@ function pendingStartBadge(text = 'Pending') {
   return `<span class="pending-start-badge">${esc(text)}</span>`;
 }
 
+function dashboardPendingStartBadge(text = 'Pending') {
+  return `<span class="dashboard-pending-badge">${esc(text)}</span>`;
+}
+
 function syncDatePendingControl(inputId, checkboxId, labelId, requiredLabel) {
   const input = document.getElementById(inputId);
   const checkbox = document.getElementById(checkboxId);
@@ -1705,14 +1717,16 @@ let progStartDateCtx = null; // { studentId, programIdx }
 function changeProgramStartDate(studentId, programIdx) {
   if (!isAdminUser()) { alert('Only admins can change program start dates.'); return; }
   const s = DB.get(studentId);
-  if (!s || programIdx === 0) return;
-  const renewal = (s.renewals || [])[programIdx - 1];
-  if (!renewal) return;
+  if (!s) return;
   progStartDateCtx = { studentId, programIdx };
   document.getElementById('prog-start-date-title').textContent = `Change ${getDisplayedProgramLabel(s, programIdx)} Start Date`;
-  document.getElementById('prog-start-date-input').value = renewal.startDate || '';
+  const targetProgram = programIdx === 0
+    ? { startDate: s.programStartDate || '', startDatePending: s.programStartPending === true }
+    : (s.renewals || [])[programIdx - 1];
+  if (!targetProgram) return;
+  document.getElementById('prog-start-date-input').value = targetProgram.startDate || '';
   document.getElementById('prog-start-date-input').dataset.locked = '';
-  document.getElementById('prog-start-date-pending').checked = renewal.startDatePending === true;
+  document.getElementById('prog-start-date-pending').checked = targetProgram.startDatePending === true;
   syncDatePendingControl('prog-start-date-input','prog-start-date-pending','prog-start-date-label','Start Date *');
   openModal('modal-prog-start-date');
 }
@@ -1726,15 +1740,45 @@ document.getElementById('btn-save-prog-start-date').addEventListener('click', ()
   if (!isPending && !newDate) { alert('Please enter a start date or select Pending.'); return; }
   const s = DB.get(studentId);
   if (!s) return;
-  const renewal = (s.renewals || [])[programIdx - 1];
-  if (!renewal) return;
-  renewal.startDate = isPending ? '' : newDate;
-  renewal.startDatePending = isPending;
+  if (programIdx === 0) {
+    s.programStartDate = isPending ? '' : newDate;
+    s.programStartPending = isPending;
+    if (!isPending && newDate) {
+      if (!Array.isArray(s.coachHistory) || !s.coachHistory.length) {
+        s.coachHistory = [{ coach: s.coach || '', startDate: newDate }];
+      } else if (!s.coachHistory[0].startDate) {
+        s.coachHistory[0] = { ...s.coachHistory[0], startDate: newDate };
+      }
+    }
+  } else {
+    const renewal = (s.renewals || [])[programIdx - 1];
+    if (!renewal) return;
+    renewal.startDate = isPending ? '' : newDate;
+    renewal.startDatePending = isPending;
+  }
   DB.upsert(s);
   closeModal('modal-prog-start-date');
   renderStudent(studentId);
   progStartDateCtx = null;
 });
+
+function applyProgramStartDate(student, programIdx, startDate) {
+  if (!student) return;
+  if (programIdx === 0) {
+    student.programStartDate = startDate;
+    student.programStartPending = false;
+    if (!Array.isArray(student.coachHistory) || !student.coachHistory.length) {
+      student.coachHistory = [{ coach: student.coach || '', startDate }];
+    } else if (!student.coachHistory[0].startDate) {
+      student.coachHistory[0] = { ...student.coachHistory[0], startDate };
+    }
+    return;
+  }
+  const renewal = (student.renewals || [])[programIdx - 1];
+  if (!renewal) return;
+  renewal.startDate = startDate;
+  renewal.startDatePending = false;
+}
 
 let changeProgramTypeCtx = null;
 
@@ -3614,7 +3658,7 @@ function renderDashboard() {
     const allSessions = [...(s.sessions || []), ...((s.renewals || []).flatMap(r => r.sessions || []))];
     const lastSessDate = allSessions.filter(x => x.date).map(x => x.date).sort().pop() || '';
     const startDate = currProg.programStartDate || '';
-    const startPending = isProgramStartPending(currProg);
+    const startPending = isProgramStartPending(currProg) || !startDate;
     const endDate = startDate ? localDateStr(new Date(new Date(startDate + 'T00:00:00').getTime() + (Logic.totalDays(currProg) - 1) * 86400000)) : '';
     const _allPauses = [...(s.pauses || []), ...(s.renewals || []).flatMap(r => r.pauses || [])];
     const isPaused = _allPauses.some(p => pauseContainsDate(p, todayStr));
@@ -3720,6 +3764,7 @@ function renderDashboard() {
 
     // Start & end dates from current program
     const startDate = currProg.programStartDate;
+    const startPending = isProgramStartPending(currProg) || !startDate;
     const endDate = startDate ? localDateStr(new Date(new Date(startDate + 'T00:00:00').getTime() + (Logic.totalDays(currProg) - 1) * 86400000)) : null;
 
     return `<tr style="border-bottom:1px solid var(--gray-200);cursor:pointer;transition:background .12s" onclick="goStudent('${s.id}')" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
@@ -3743,7 +3788,7 @@ function renderDashboard() {
       <td style="padding:12px 16px;text-align:center;font-size:18px;font-weight:700;color:#14532D">${done}</td>
       <td style="padding:12px 16px;text-align:center;font-size:18px;font-weight:700;color:#991B1B">${remaining}</td>
       <td style="padding:12px 16px">${lastSessCell}</td>
-      <td style="padding:12px 16px;font-size:12px;color:var(--gray-600);white-space:nowrap">${formatProgramStart(currProg)}</td>
+      <td style="padding:12px 16px;font-size:12px;color:var(--gray-600);white-space:nowrap">${startPending ? dashboardPendingStartBadge() : fmtDate(startDate)}</td>
       <td style="padding:12px 16px;font-size:12px;color:var(--gray-600);white-space:nowrap">${endDate ? fmtDate(endDate) : '—'}</td>
     </tr>`;
   }).join('');
@@ -4207,10 +4252,6 @@ function buildEOPBlock(s, programIdx) {
 }
 
 function buildAllProgramsLog(s) {
-  if (!s.programStartDate) {
-    if (isProgramStartPending(s)) return buildPendingProgramStartLog(s);
-    return `<p style="font-size:13px;color:var(--gray-500);padding:16px 20px">${isProgramStartPending(s) ? 'Program start date is pending.' : 'Set a program start date to see the session log.'}</p>`;
-  }
   const canManageStudent = isAdminUser();
   const programs = [
     { startDate: s.programStartDate, programStartDate: s.programStartDate, programStartPending: s.programStartPending === true, sessions: s.sessions || [], pauses: s.pauses || [], extraDays: s.extraDays || 0, coachHistory: s.coachHistory || [], programType: s.programType, programIdx: 0 },
@@ -4268,7 +4309,7 @@ function buildAllProgramsLog(s) {
     const isCollapsed = isCompleted && !!collapsedPrograms[collapseKey];
 
     if (totalPrograms > 1 || getProgramNumberBase(s) > 1) {
-      const editDateBtn = canManageStudent && prog.programIdx > 0
+      const editDateBtn = canManageStudent && (prog.programIdx > 0 || getProgramNumberBase(s) > 1)
         ? `<button onclick="changeProgramStartDate('${s.id}',${prog.programIdx})" title="Edit start date" style="background:none;border:1px solid #4B5563;color:#9CA3AF;font-size:11px;padding:2px 8px;border-radius:6px;cursor:pointer;margin-left:6px">✏ Edit Date</button>`
         : '';
       const editTypeBtn = canManageStudent && prog.programIdx > 0
@@ -4307,23 +4348,29 @@ function buildAllProgramsLog(s) {
       }
     }
     if (!isCollapsed) {
-      const overflowInfo = overflowInfoByProgram[i];
-      html += buildDaySessionLog(progObj, prog.programIdx, totalPrograms, overflowInfo.overflowMap, combinedPauses);
-      if (i === totalPrograms - 1 && overflowInfo.carryOut > 0) {
-        html += `<div style="background:#FFF7ED;border-top:2px solid #FED7AA;padding:14px 20px">
-          <div style="font-size:13px;font-weight:800;color:#92400E;margin-bottom:6px">⏳ Sessions pending carry-over <span style="font-weight:400;color:#B45309;font-size:12px">(exceeded ${Logic.totalSessions(progObj)}-session cap — will apply when program is renewed)</span></div>
-          ${renderCarryOverRows(overflowInfo)}
-          <div style="margin-top:10px;font-size:13px;font-weight:700;color:#92400E">Total pending: <span style="color:#B45309">${formatSessionAmount(overflowInfo.carryOut)} session${overflowInfo.carryOut !== 1 ? 's' : ''}</span></div>
-        </div>`;
+      if (!progObj.programStartDate && isProgramStartPending(progObj)) {
+        html += buildPendingProgramStartLog(s, prog.programIdx);
+      } else if (!progObj.programStartDate) {
+        html += `<p style="font-size:13px;color:var(--gray-500);padding:16px 20px">Set a program start date to see the session log.</p>`;
+      } else {
+        const overflowInfo = overflowInfoByProgram[i];
+        html += buildDaySessionLog(progObj, prog.programIdx, totalPrograms, overflowInfo.overflowMap, combinedPauses);
+        if (i === totalPrograms - 1 && overflowInfo.carryOut > 0) {
+          html += `<div style="background:#FFF7ED;border-top:2px solid #FED7AA;padding:14px 20px">
+            <div style="font-size:13px;font-weight:800;color:#92400E;margin-bottom:6px">⏳ Sessions pending carry-over <span style="font-weight:400;color:#B45309;font-size:12px">(exceeded ${Logic.totalSessions(progObj)}-session cap — will apply when program is renewed)</span></div>
+            ${renderCarryOverRows(overflowInfo)}
+            <div style="margin-top:10px;font-size:13px;font-weight:700;color:#92400E">Total pending: <span style="color:#B45309">${formatSessionAmount(overflowInfo.carryOut)} session${overflowInfo.carryOut !== 1 ? 's' : ''}</span></div>
+          </div>`;
+        }
+        html += buildEOPBlock(s, prog.programIdx);
       }
-      html += buildEOPBlock(s, prog.programIdx);
     }
   });
   return html;
 }
 
-function buildPendingProgramStartLog(s) {
-  const inputId = `pending-start-${domSafeId(s.id)}`;
+function buildPendingProgramStartLog(s, programIdx = 0) {
+  const inputId = `pending-start-${domSafeId(s.id)}-${programIdx}`;
   return `<table style="width:100%;border-collapse:collapse"><colgroup><col style="width:80px"><col style="width:240px"><col></colgroup>
     <tr style="border-top:2px solid #FCA5A5;border-bottom:1px solid #FECACA;background:#FEF2F2">
       <td style="padding:10px 16px;font-weight:800;color:#B91C1C;text-align:right;white-space:nowrap;font-size:14px;vertical-align:middle;border-right:1px solid #FECACA">Day 1</td>
@@ -4333,33 +4380,33 @@ function buildPendingProgramStartLog(s) {
       <td style="padding:10px 14px;vertical-align:middle">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <input type="date" id="${inputId}" style="padding:7px 10px;border:1.5px solid #FCA5A5;border-radius:8px;font-size:13px;font-family:inherit;background:white">
-          <button class="btn btn-xs" style="background:#DC2626;color:white;font-weight:700" onclick="setPendingProgramStartFromDayOne('${s.id}')">Set Start Date</button>
-          <span style="font-size:12px;color:#991B1B">This date becomes the ${ordinal(getDisplayedProgramNumber(s, 0))} program start date.</span>
+          <button class="btn btn-xs" style="background:#DC2626;color:white;font-weight:700" onclick="setPendingProgramStartFromDayOne('${s.id}',${programIdx})">Set Start Date</button>
+          <button class="btn btn-xs" style="background:#B45309;color:white;font-weight:700" onclick="openPendingDayOneSession('${s.id}',${programIdx})">+ Log in</button>
+          <span style="font-size:12px;color:#991B1B">This date becomes Day 1 of the ${ordinal(getDisplayedProgramNumber(s, programIdx))} program.</span>
         </div>
       </td>
     </tr>
   </table>`;
 }
 
-function setPendingProgramStartFromDayOne(studentId) {
+function setPendingProgramStartFromDayOne(studentId, programIdx = 0) {
   const s = DB.get(studentId);
   if (!s) return;
-  const input = document.getElementById(`pending-start-${domSafeId(studentId)}`);
+  const input = document.getElementById(`pending-start-${domSafeId(studentId)}-${programIdx}`);
   const startDate = input?.value || '';
   if (!startDate) { alert('Please choose the Day 1 start date.'); input?.focus(); return; }
-
-  s.programStartDate = startDate;
-  s.programStartPending = false;
-
-  if (!Array.isArray(s.coachHistory) || !s.coachHistory.length) {
-    s.coachHistory = [{ coach: s.coach || '', startDate }];
-  } else if (s.coachHistory.length === 1 && (!s.coachHistory[0].startDate || s.coachHistory[0].coach === s.coach)) {
-    s.coachHistory[0] = { ...s.coachHistory[0], startDate };
-  }
+  applyProgramStartDate(s, programIdx, startDate);
 
   DB.upsert(s);
   renderStudent(studentId);
   renderDashboard();
+}
+
+function openPendingDayOneSession(studentId, programIdx = 0) {
+  const input = document.getElementById(`pending-start-${domSafeId(studentId)}-${programIdx}`);
+  const startDate = input?.value || '';
+  if (!startDate) { alert('Please choose the Day 1 date first.'); input?.focus(); return; }
+  openSessionForm(studentId, 1, 1, null, startDate, programIdx);
 }
 
 function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = {}, allPauses = null) {
@@ -5010,6 +5057,14 @@ document.getElementById('btn-save-session').addEventListener('click', () => {
 
   const sRaw = DB.get(studentId);
   if (!sRaw) return;
+  if (!editId && date) {
+    const pendingProgram = programIdx === 0
+      ? { startDate: sRaw.programStartDate || '', startDatePending: sRaw.programStartPending === true }
+      : (sRaw.renewals || [])[programIdx - 1];
+    if (pendingProgram && !pendingProgram.startDate && (pendingProgram.startDatePending === true || programIdx === 0)) {
+      applyProgramStartDate(sRaw, programIdx, date);
+    }
+  }
   // Build proxy using the specific programIdx from the button that opened the form
   const s = programIdx === 0 ? sRaw : { ...sRaw, sessions: (sRaw.renewals||[])[programIdx-1]?.sessions||[], pauses: (sRaw.renewals||[])[programIdx-1]?.pauses||[], extraDays: (sRaw.renewals||[])[programIdx-1]?.extraDays||0, programStartDate: (sRaw.renewals||[])[programIdx-1]?.startDate };
 
