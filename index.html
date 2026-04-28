@@ -3792,19 +3792,20 @@ function autoFixProgramStartDates(s) {
 function renderStudent(id) {
   const s = DB.get(id);
   if (!s) { goDashboard(); return; }
-  if (autoFixProgramStartDates(s)) DB.upsert(s);
-  const canManageStudent = isAdminUser();
+  try {
+    if (autoFixProgramStartDates(s)) DB.upsert(s);
+    const canManageStudent = isAdminUser();
 
-  const activeProg = getProgramObj(s);
-  const activeProgramIdx = getActiveProgramIdx(s.id);
-  const activeProgramNum = activeProgramIdx + 1;
-  const displayedActiveProgramNum = getDisplayedProgramNumber(s, activeProgramIdx);
-  const totalPrograms = 1 + (s.renewals || []).length;
-  const total = Logic.totalSessions(activeProg);
-  const carryOver = getProgramCarryOver(s, activeProgramIdx);
-  const done = Math.min(Math.round((Logic.completed(activeProg) + carryOver) * 10) / 10, total);
-  const remaining = Math.max(0, Math.round((total - done) * 10) / 10);
-  const spw = Logic.spw(s);
+    const activeProg = getProgramObj(s);
+    const activeProgramIdx = getActiveProgramIdx(s.id);
+    const activeProgramNum = activeProgramIdx + 1;
+    const displayedActiveProgramNum = getDisplayedProgramNumber(s, activeProgramIdx);
+    const totalPrograms = 1 + (s.renewals || []).length;
+    const total = Logic.totalSessions(activeProg);
+    const carryOver = getProgramCarryOver(s, activeProgramIdx);
+    const done = Math.min(Math.round((Logic.completed(activeProg) + carryOver) * 10) / 10, total);
+    const remaining = Math.max(0, Math.round((total - done) * 10) / 10);
+    const spw = Logic.spw(s);
 
   const checks = [
     { k: 'studyPlanShared',   t: 'Study plan has been reviewed and shared with the student, before the first session.' },
@@ -4057,6 +4058,52 @@ function renderStudent(id) {
       </div>
     </div>
 
+    `;
+  } catch (err) {
+    console.error('Failed to render student profile', { studentId: id, error: err, student: s });
+    renderStudentRecoveryView(s);
+  }
+}
+
+function renderStudentRecoveryView(student) {
+  const container = document.getElementById('student-container');
+  if (!container) return;
+  const idJson = JSON.stringify(student?.id || '');
+  const name = esc(student?.fullName || student?.name || 'Unnamed student');
+  const coach = esc(student?.coach || '—');
+  const programLabel = student?.programNum ? `${ordinal(Number(student.programNum) || student.programNum)} Program` : '—';
+  const startText = isProgramStartPending(student)
+    ? '<span class="pending-start-badge">Pending</span>'
+    : (student?.programStartDate ? fmtDate(student.programStartDate) : '—');
+  container.innerHTML = `
+    <div class="back-bar">
+      <button class="back-btn" onclick="goDashboard()">← Back to Dashboard</button>
+    </div>
+    <div class="section open">
+      <div class="sec-header">
+        <span class="sec-title">Student Recovery View</span>
+      </div>
+      <div class="sec-body">
+        <div class="alert alert-danger" style="margin-bottom:16px">
+          <span class="alert-icon">⚠</span>
+          <div class="alert-body">
+            <strong>This profile has older or incomplete data.</strong>
+            <span>The full profile view could not load, but you can still manage or delete this student from here.</span>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:18px">
+          <div class="info-item"><label>Student</label><p>${name}</p></div>
+          <div class="info-item"><label>Coach</label><p>${coach}</p></div>
+          <div class="info-item"><label>Program Number</label><p>${esc(programLabel)}</p></div>
+          <div class="info-item"><label>Program Start</label><p>${startText}</p></div>
+          <div class="info-item"><label>Student ID</label><p style="font-family:monospace;font-size:12px;word-break:break-all">${esc(student?.id || 'Missing')}</p></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          ${isAdminUser() && student?.id ? `<button class="btn btn-secondary" onclick='openStudentForm(${idJson})'>Edit Profile</button>` : ''}
+          ${isAdminUser() && student?.id ? `<button class="btn btn-danger" onclick='askDeleteStudent(${idJson})'>Delete Student</button>` : ''}
+        </div>
+      </div>
+    </div>
   `;
 }
 
