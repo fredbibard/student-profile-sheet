@@ -1202,7 +1202,10 @@ function startSync() {
   stopSync();
 
   _syncUnsubs.push(fsdb.collection('students').onSnapshot(snapshot => {
-    _cache.students = snapshot.docs.map(d => normalizeStudentRecord(d.data()));
+    _cache.students = snapshot.docs.map(d => {
+      const data = d.data() || {};
+      return normalizeStudentRecord({ ...data, id: data.id || d.id });
+    });
     if (activeView === 'student' && activeStudentId) {
       if (DB.get(activeStudentId)) renderStudent(activeStudentId);
       else goDashboard();
@@ -1213,7 +1216,10 @@ function startSync() {
   }, console.error));
 
   _syncUnsubs.push(fsdb.collection('coaches').onSnapshot(snapshot => {
-    _cache.coaches = snapshot.docs.map(d => d.data())
+    _cache.coaches = snapshot.docs.map(d => {
+      const data = d.data() || {};
+      return { ...data, id: data.id || d.id };
+    })
       .filter(c => c && c.name)
       .sort((a, b) => a.name.localeCompare(b.name));
     if (activeView === 'coaches') switchTab('coaches');
@@ -1472,6 +1478,7 @@ const DB = {
 function normalizeStudentRecord(student = {}) {
   return {
     ...student,
+    id: student.id || '',
     sessions: Array.isArray(student.sessions) ? student.sessions : [],
     pauses: Array.isArray(student.pauses) ? student.pauses : [],
     programStartPending: student.programStartPending === true,
