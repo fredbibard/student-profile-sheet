@@ -3455,28 +3455,37 @@ function goStudent(id) {
   // Default to the current (first incomplete) program
   const _s = DB.get(id);
   if (_s) {
-    const _totalProgs = 1 + (_s.renewals || []).length;
-    let _currentProgI = _totalProgs - 1;
-    for (let j = 0; j < _totalProgs; j++) {
-      const _pObj = getProgramObjAt(_s, j);
-      const _pTotal = Logic.totalSessions(_pObj);
-      const _pCarry = getProgramCarryOver(_s, j);
-      const _pDone = Math.min(Math.round((Logic.completed(_pObj) + _pCarry) * 10) / 10, _pTotal);
-      if (_pDone < _pTotal) { _currentProgI = j; break; }
+    try {
+      const _totalProgs = 1 + (_s.renewals || []).length;
+      let _currentProgI = _totalProgs - 1;
+      for (let j = 0; j < _totalProgs; j++) {
+        const _pObj = getProgramObjAt(_s, j);
+        const _pTotal = Logic.totalSessions(_pObj);
+        const _pCarry = getProgramCarryOver(_s, j);
+        const _pDone = Math.min(Math.round((Logic.completed(_pObj) + _pCarry) * 10) / 10, _pTotal);
+        if (_pDone < _pTotal) { _currentProgI = j; break; }
+      }
+      activeProgramCtx[id] = _currentProgI;
+    } catch (err) {
+      console.error('Failed to resolve active program for student', { studentId: id, error: err, student: _s });
+      activeProgramCtx[id] = 0;
     }
-    activeProgramCtx[id] = _currentProgI;
   } else {
     activeProgramCtx[id] = 0;
   }
   // Auto-collapse completed programs whenever a student profile is opened
   if (_s) {
-    const _total = 1 + (_s.renewals || []).length;
-    for (let _i = 0; _i < _total; _i++) {
-      const _pObj = getProgramObjAt(_s, _i);
-      const _pTotal = Logic.totalSessions(_pObj);
-      const _pCarry = getProgramCarryOver(_s, _i);
-      const _pDone = Math.min(Math.round((Logic.completed(_pObj) + _pCarry) * 10) / 10, _pTotal);
-      collapsedPrograms[`${id}_${_i}`] = _pDone >= _pTotal && _pTotal > 0;
+    try {
+      const _total = 1 + (_s.renewals || []).length;
+      for (let _i = 0; _i < _total; _i++) {
+        const _pObj = getProgramObjAt(_s, _i);
+        const _pTotal = Logic.totalSessions(_pObj);
+        const _pCarry = getProgramCarryOver(_s, _i);
+        const _pDone = Math.min(Math.round((Logic.completed(_pObj) + _pCarry) * 10) / 10, _pTotal);
+        collapsedPrograms[`${id}_${_i}`] = _pDone >= _pTotal && _pTotal > 0;
+      }
+    } catch (err) {
+      console.error('Failed to resolve collapsed program state', { studentId: id, error: err, student: _s });
     }
   }
 
@@ -3486,7 +3495,13 @@ function goStudent(id) {
   document.getElementById('view-coaches').classList.remove('active');
   document.getElementById('view-attendance').classList.remove('active');
   document.getElementById('view-download').classList.remove('active');
-  renderStudent(id);
+  try {
+    renderStudent(id);
+  } catch (err) {
+    console.error('goStudent render failed', { studentId: id, error: err, student: _s });
+    if (_s) renderStudentRecoveryView(_s);
+    else goDashboard();
+  }
 
   // Scroll to the current week row after the DOM updates
   requestAnimationFrame(() => {
@@ -4196,6 +4211,7 @@ function buildAllProgramsLog(s) {
     if (isProgramStartPending(s)) return buildPendingProgramStartLog(s);
     return `<p style="font-size:13px;color:var(--gray-500);padding:16px 20px">${isProgramStartPending(s) ? 'Program start date is pending.' : 'Set a program start date to see the session log.'}</p>`;
   }
+  const canManageStudent = isAdminUser();
   const programs = [
     { startDate: s.programStartDate, programStartDate: s.programStartDate, programStartPending: s.programStartPending === true, sessions: s.sessions || [], pauses: s.pauses || [], extraDays: s.extraDays || 0, coachHistory: s.coachHistory || [], programType: s.programType, programIdx: 0 },
     ...(s.renewals || []).map((r, i) => ({ startDate: r.startDate, programStartDate: r.startDate, programStartPending: r.startDatePending === true, sessions: r.sessions || [], pauses: r.pauses || [], extraDays: r.extraDays || 0, coachHistory: s.coachHistory || [], programType: r.programType || s.programType, programIdx: i + 1 }))
