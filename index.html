@@ -1112,6 +1112,16 @@ function isAdminUser() {
   return _userRole === 'team';
 }
 
+function isCoachUser() {
+  return _userRole === 'coach';
+}
+
+function canEditProgramStartDate(student, programIdx = 0) {
+  if (isAdminUser()) return true;
+  if (!isCoachUser() || !student) return false;
+  return getDisplayedProgramNumber(student, programIdx) > 1;
+}
+
 function stopSync() {
   while (_syncUnsubs.length) {
     const unsub = _syncUnsubs.pop();
@@ -1715,9 +1725,12 @@ function toggleProgramCollapse(studentId, programIdx) {
 let progStartDateCtx = null; // { studentId, programIdx }
 
 function changeProgramStartDate(studentId, programIdx) {
-  if (!isAdminUser()) { alert('Only admins can change program start dates.'); return; }
   const s = DB.get(studentId);
   if (!s) return;
+  if (!canEditProgramStartDate(s, programIdx)) {
+    alert('Only admins can change 1st program start dates.');
+    return;
+  }
   progStartDateCtx = { studentId, programIdx };
   document.getElementById('prog-start-date-title').textContent = `Change ${getDisplayedProgramLabel(s, programIdx)} Start Date`;
   const targetProgram = programIdx === 0
@@ -1732,14 +1745,14 @@ function changeProgramStartDate(studentId, programIdx) {
 }
 
 document.getElementById('btn-save-prog-start-date').addEventListener('click', () => {
-  if (!isAdminUser()) return;
   if (!progStartDateCtx) return;
   const { studentId, programIdx } = progStartDateCtx;
+  const s = DB.get(studentId);
+  if (!s) return;
+  if (!canEditProgramStartDate(s, programIdx)) return;
   const newDate = document.getElementById('prog-start-date-input').value;
   const isPending = document.getElementById('prog-start-date-pending')?.checked || false;
   if (!isPending && !newDate) { alert('Please enter a start date or select Pending.'); return; }
-  const s = DB.get(studentId);
-  if (!s) return;
   if (programIdx === 0) {
     s.programStartDate = isPending ? '' : newDate;
     s.programStartPending = isPending;
@@ -4309,7 +4322,7 @@ function buildAllProgramsLog(s) {
     const isCollapsed = isCompleted && !!collapsedPrograms[collapseKey];
 
     if (totalPrograms > 1 || getProgramNumberBase(s) > 1) {
-      const editDateBtn = canManageStudent && (prog.programIdx > 0 || getProgramNumberBase(s) > 1)
+      const editDateBtn = canEditProgramStartDate(s, prog.programIdx) && (prog.programIdx > 0 || getProgramNumberBase(s) > 1)
         ? `<button onclick="changeProgramStartDate('${s.id}',${prog.programIdx})" title="Edit start date" style="background:none;border:1px solid #4B5563;color:#9CA3AF;font-size:11px;padding:2px 8px;border-radius:6px;cursor:pointer;margin-left:6px">✏ Edit Date</button>`
         : '';
       const editTypeBtn = canManageStudent && prog.programIdx > 0
