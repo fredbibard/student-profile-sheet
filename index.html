@@ -2752,7 +2752,10 @@ function importFieldMap(table) {
 }
 
 function parseImportedBoolean(value) {
-  return ['yes', 'true', '1', 'y', 'completed'].includes(normalizeImportKey(value));
+  const key = normalizeImportKey(value);
+  if (['yes', 'true', '1', 'y', 'completed'].includes(key)) return true;
+  const numeric = Number(normalizeImportCell(value));
+  return Number.isFinite(numeric) ? numeric !== 0 : false;
 }
 
 function parseImportedInteger(value) {
@@ -2765,6 +2768,10 @@ function normalizeImportedDate(value) {
   const raw = normalizeImportCell(value);
   if (!raw) return '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const serial = Number(raw);
+  if (Number.isFinite(serial) && serial > 20000 && serial < 90000) {
+    return localDateStr(new Date(Date.UTC(1899, 11, 30) + Math.floor(serial) * 86400000));
+  }
   const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (slash) {
     const a = parseInt(slash[1], 10);
@@ -2791,6 +2798,20 @@ function parseImportedProgramType(value) {
   if (raw === 'regular') return 'regular-3m';
   if (raw === '2x') return '2x-3m';
   if (raw.includes('lite')) return 'lite-3m';
+  const sessionsPerWeek = raw.match(/(?:sessions?\s*per\s*week|number of sessions per week)\s*(?:is|are|:)?\s*(\d+)/);
+  const months = raw.match(/(\d+)\s*months?/);
+  const days = raw.match(/(\d+)\s*days?/);
+  if (sessionsPerWeek || months || days) {
+    const spw = sessionsPerWeek ? parseInt(sessionsPerWeek[1], 10) : (raw.includes('2x') ? 2 : 1);
+    const duration = months
+      ? parseInt(months[1], 10)
+      : (days ? (parseInt(days[1], 10) >= 360 ? 12 : parseInt(days[1], 10) >= 180 ? 6 : 3) : 3);
+    const prefix = spw >= 2 ? '2x' : 'regular';
+    if (raw.includes('lite')) return 'lite-3m';
+    if (duration >= 12) return `${prefix}-12m`;
+    if (duration >= 6) return `${prefix}-6m`;
+    return `${prefix}-3m`;
+  }
   if (raw.includes('2x') && raw.includes('12')) return '2x-12m';
   if (raw.includes('2x') && raw.includes('6')) return '2x-6m';
   if (raw.includes('2x') && raw.includes('3')) return '2x-3m';
@@ -2882,6 +2903,137 @@ function finalizeImportedProgramMeta(meta, fallbackType) {
   });
 }
 
+function cleanImportedNarrative(value) {
+  return normalizeImportCell(value)
+    .replace(/System\.Xml\.XmlElement/g, ' ')
+    .replace(/\[object Object\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getWorkbookImportRows(workbook, sheetName = '') {
+  const targetName = sheetName || workbook?.SheetNames?.[0];
+  if (!targetName || !workbook?.Sheets?.[targetName]) return [];
+  return XLSX.utils.sheet_to_json(workbook.Sheets[targetName], {
+    header: 1,
+    defval: '',
+    raw: false,
+    blankrows: true
+  }).map(normalizeImportRow);
+}
+
+function buildStudentFromLegacyWorkbook(workbook) {
+  const rows = getWorkbookImportRows(workbook);
+  if (!rows.length) return null;
+
+  const findLegacyRow = (...labels) => {
+    const keys = labels.map(normalizeImportKey);
+    return rows.find(row => keys.includes(normalizeImportKey(row[0] || ''))) || null;
+  };
+
+  const studentName = cleanImportedNarrative(findLegacyRow('Student Full Name', 'Student Name')?.[1]);
+  if (!studentName) return null;
+
+  const programType = parseImportedProgramType(cleanImportedNarrative(findLegacyRow('Program Type')?.[1])) || 'regular-3m';
+  const coach = cleanImportedNarrative(findLegacyRow('Coach')?.[1]);
+  const speakingLevel = cleanImportedNarrative(findLegacyRow('Speaking Level')?.[1]);
+  const typeOfSpanish = cleanImportedNarrative(findLegacyRow('Type of Spanish')?.[1]);
+  const goals = cleanImportedNarrative(findLegacyRow('Goals and Objectives', 'Goals')?.[1]);
+  const studyPlanText = cleanImportedNarrative(findLegacyRow('Study Plan', 'Study Plan Schedule Plan', 'Study Plan  Schedule Plan')?.[1]);
+
+  const checklist = {
+    studyPlanShared: false,
+    studyPlanExplained: false,
+    homeworkAssigned: false,
+    studyPlanAdjusted: false,
+    sessionsAdjusted: false
+  };
+  const checklistKeys = ['studyPlanShared', 'studyPlanExplained', 'homeworkAssigned', 'studyPlanAdjusted', 'sessionsAdjusted'];
+  const checklistHeaderIdx = rows.findIndex(row => row.some(cell => normalizeImportKey(cell) === 'coaches checklist'));
+  if (checklistHeaderIdx >= 0) {
+    checklistKeys.forEach((key, idx) => {
+      const marker = rows[checklistHeaderIdx + 1 + idx]?.[2];
+      checklist[key] = parseImportedBoolean(marker);
+    });
+  }
+
+  const sessions = [];
+  let maxDay = 0;
+  let startDate = '';
+  rows.forEach(row => {
+    const label = cleanImportedNarrative(row[0]);
+    const dayMatch = label.match(/^day\s*(\d+)/i);
+    if (!dayMatch) return;
+
+    const dayNumber = parseInt(dayMatch[1], 10);
+    if (dayNumber > maxDay) maxDay = dayNumber;
+
+    const date = normalizeImportedDate(row[1]);
+    if (dayNumber === 1 && date) startDate = startDate || date;
+
+    const duration = cleanImportedNarrative(row[2]);
+    const notes = cleanImportedNarrative(row[3]);
+    const noteKey = normalizeImportKey(notes);
+    const looksLikeLoggedSession = !!duration || (
+      !!notes &&
+      noteKey !== 'end of program' &&
+      !noteKey.includes('remember you ll receive a bonus') &&
+      /(topic|goal|pain point|achievement|reviewed|practiced|conversation|session|covered)/i.test(notes)
+    );
+
+    if (!looksLikeLoggedSession || !date) return;
+
+    sessions.push({
+      id: uid(),
+      week: '',
+      slot: '',
+      date,
+      status: 'completed',
+      missedBy: '',
+      coach,
+      duration,
+      topic: '',
+      notes,
+      reason: '',
+      studentMissNotes: '',
+      autoNote: ''
+    });
+
+    if (!startDate) startDate = date;
+  });
+
+  const extraDays = Math.max(0, maxDay - (PROGRAM_TYPES[programType]?.days || 90));
+  const existing = _cache.students.find(student =>
+    accessKey(student.fullName || student.name) === accessKey(studentName)
+  ) || null;
+  const student = {
+    id: existing?.id || uid(),
+    fullName: studentName,
+    programType,
+    speakingLevel,
+    typeOfSpanish,
+    programNum: '1',
+    coach,
+    programStartPending: !startDate,
+    programStartDate: startDate,
+    studyPlanLink: /^https?:\/\//i.test(studyPlanText) ? studyPlanText : '',
+    schedule: '',
+    goals,
+    withdrawn: false,
+    withdrawalDate: '',
+    withdrawalReason: '',
+    sessions,
+    pauses: [],
+    extraDays,
+    checklist,
+    coachHistory: coach && startDate ? [{ coach, startDate }] : [],
+    eop: existing?.eop || { strengths: '', focusAreas: '' },
+    renewals: []
+  };
+
+  return normalizeStudentRecord(student);
+}
+
 function buildStudentFromImportedWorkbook(workbook) {
   const tables = extractWorkbookImportTables(workbook);
   const profileMap = importFieldMap(tables['student profile details'] || tables['profile']);
@@ -2891,8 +3043,12 @@ function buildStudentFromImportedWorkbook(workbook) {
   const sessionTable = importTableObjects(tables['session log'] || tables['sessions']);
   const coachHistoryTable = importTableObjects(tables['coach history']);
 
-  const studentName = normalizeImportCell(profileMap['student name']);
-  if (!studentName) throw new Error('The uploaded workbook is missing "Student Name" in Student Profile Details.');
+  const studentName = normalizeImportCell(profileMap['student name'] || profileMap['student full name']);
+  if (!studentName) {
+    const legacyStudent = buildStudentFromLegacyWorkbook(workbook);
+    if (legacyStudent) return legacyStudent;
+    throw new Error('The uploaded workbook is missing "Student Name" in Student Profile Details.');
+  }
 
   const programMeta = {};
 
