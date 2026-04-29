@@ -1579,6 +1579,13 @@ function getKnownCoachNames() {
   return [...names].sort((a, b) => a.localeCompare(b));
 }
 
+function getSelectableCoachNames() {
+  return DB.allCoaches()
+    .map(coach => normalizeImportCell(coach?.name))
+    .filter(name => name && !isDeletedCoachName(name))
+    .sort((a, b) => a.localeCompare(b));
+}
+
 function getAllStudentSessions(student) {
   return [
     ...(student?.sessions || []),
@@ -2913,8 +2920,7 @@ function cleanImportedNarrative(value) {
 
 function getAvailableImportedCoachMap() {
   const map = new Map();
-  DB.allCoaches().forEach(coach => {
-    const name = normalizeImportCell(coach?.name);
+  getSelectableCoachNames().forEach(name => {
     const key = accessKey(name);
     if (key && !map.has(key)) map.set(key, name);
   });
@@ -2942,6 +2948,20 @@ function normalizeImportedDurationMinutes(value, status = 'completed') {
   if (/(hour|hours|hr|hrs)\b/.test(lower)) amount *= 60;
   else if (!/(minute|minutes|min|mins)\b/.test(lower) && amount > 0 && amount <= 4) amount *= 60;
   return String(Math.round(amount));
+}
+
+function isLegacyImportedLoggedDuration(value) {
+  const raw = normalizeImportCell(value);
+  if (!raw) return false;
+  const key = normalizeImportKey(raw);
+  return key === '60'
+    || key === '60 min'
+    || key === '60 mins'
+    || key === '60 minute'
+    || key === '60 minutes'
+    || key === '1 hour'
+    || key === '1 hr'
+    || key === '1 hours';
 }
 
 function normalizeImportedSessionsForProgram(programLike, sessions = [], coachMap = null) {
@@ -3046,6 +3066,7 @@ function getWorkbookImportRows(workbook, sheetName = '') {
 function buildStudentFromLegacyWorkbook(workbook) {
   const rows = getWorkbookImportRows(workbook);
   if (!rows.length) return null;
+  const coachMap = getAvailableImportedCoachMap();
 
   const findLegacyRow = (...labels) => {
     const keys = labels.map(normalizeImportKey);
@@ -3056,7 +3077,7 @@ function buildStudentFromLegacyWorkbook(workbook) {
   if (!studentName) return null;
 
   const programType = parseImportedProgramType(cleanImportedNarrative(findLegacyRow('Program Type')?.[1])) || 'regular-3m';
-  const coach = cleanImportedNarrative(findLegacyRow('Coach')?.[1]);
+  const coach = resolveImportedCoachName(cleanImportedNarrative(findLegacyRow('Coach')?.[1]), coachMap);
   const speakingLevel = cleanImportedNarrative(findLegacyRow('Speaking Level')?.[1]);
   const typeOfSpanish = cleanImportedNarrative(findLegacyRow('Type of Spanish')?.[1]);
   const goals = cleanImportedNarrative(findLegacyRow('Goals and Objectives', 'Goals')?.[1]);
@@ -3094,15 +3115,7 @@ function buildStudentFromLegacyWorkbook(workbook) {
 
     const duration = cleanImportedNarrative(row[2]);
     const notes = cleanImportedNarrative(row[3]);
-    const noteKey = normalizeImportKey(notes);
-    const looksLikeLoggedSession = !!duration || (
-      !!notes &&
-      noteKey !== 'end of program' &&
-      !noteKey.includes('remember you ll receive a bonus') &&
-      /(topic|goal|pain point|achievement|reviewed|practiced|conversation|session|covered)/i.test(notes)
-    );
-
-    if (!looksLikeLoggedSession || !date) return;
+    if (!isLegacyImportedLoggedDuration(duration) || !date) return;
 
     sessions.push({
       id: uid(),
@@ -3112,7 +3125,7 @@ function buildStudentFromLegacyWorkbook(workbook) {
       status: 'completed',
       missedBy: '',
       coach,
-      duration,
+      duration: normalizeImportedDurationMinutes(duration, 'completed'),
       topic: '',
       notes,
       reason: '',
@@ -3419,7 +3432,6 @@ function renderDownloadView() {
 
 function renderCoachView() {
   try {
-  ensureCoachRegistry();
   if (coachDateFrom && coachDateTo && coachDateFrom > coachDateTo) {
     [coachDateFrom, coachDateTo] = [coachDateTo, coachDateFrom];
   }
@@ -3477,13 +3489,6 @@ function renderCoachView() {
     });
   });
 
-  // Auto-register any coach found in student data but not yet in DB
-  const registeredCoachesRaw = DB.allCoaches();
-  Object.keys(coachMap).forEach(name => {
-    if (!registeredCoachesRaw.find(c => c.name === name)) {
-      DB.upsertCoach({ id: uid(), name });
-    }
-  });
   const registeredCoaches = DB.allCoaches().filter(rc => !isDeletedCoachName(rc.name));
 
   // Also include registered coaches that have no students yet
@@ -5028,13 +5033,9 @@ function toggleCheck(studentId, key, val) {
 // ─── STUDENT FORM ───────────────────────────────────────────
 function populateCoachSelect(selectedValue = '') {
   const sel = document.getElementById('f-coach');
-  const coaches = getKnownCoachNames();
+  const coaches = getSelectableCoachNames();
   sel.innerHTML = '<option value="">Select coach…</option>' +
     coaches.map(name => `<option value="${esc(name)}" ${name === selectedValue ? 'selected' : ''}>${esc(name)}</option>`).join('');
-
-  if (selectedValue && !coaches.includes(selectedValue)) {
-    sel.innerHTML += `<option value="${esc(selectedValue)}" selected>${esc(selectedValue)}</option>`;
-  }
 }
 
 const SPANISH_TYPE_OPTIONS = ['Castilian', 'Latam', 'Mexican', 'Colombian', 'Caribbean', 'Andalusian'];
@@ -5449,8 +5450,7 @@ function openChangeCoach(studentId) {
   const s = DB.get(studentId);
   if (!s) return;
 
-  // Merge managed coach list + any coach name ever recorded in student data
-  const coachNames = getKnownCoachNames();
+  const coachNames = getSelectableCoachNames();
 
   const sel = document.getElementById('cc-coach');
   sel.innerHTML = '<option value="">Select new coach…</option>' +
@@ -5498,7 +5498,7 @@ function openEditCoachEntry(studentId, index) {
   editCoachCtx = { studentId, index };
 
   // Build coach dropdown
-  const coachNames = getKnownCoachNames();
+  const coachNames = getSelectableCoachNames();
   const sel = document.getElementById('ece-coach');
   sel.innerHTML = coachNames.map(name => `<option value="${esc(name)}" ${name === entry.coach ? 'selected' : ''}>${esc(name)}</option>`).join('');
   document.getElementById('ece-date').value = entry.startDate;
