@@ -1126,6 +1126,7 @@ function isCoachUser() {
 function canEditProgramStartDate(student, programIdx = 0) {
   if (isAdminUser()) return true;
   if (!isCoachUser() || !student) return false;
+  if (!canCurrentUserManageStudent(student)) return false;
   return getDisplayedProgramNumber(student, programIdx) > 1;
 }
 
@@ -1222,8 +1223,153 @@ function isAssignedToCoach(s, coachName, dateStr = localDateStr(new Date())) {
   return !!s && !!coachName && accessKey(currentAssignedCoach(s, dateStr)) === accessKey(coachName);
 }
 
+function addDaysToIso(dateStr, days) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return localDateStr(d);
+}
+
+function getSortedCoachHistory(s) {
+  const history = Array.isArray(s?.coachHistory)
+    ? s.coachHistory
+        .filter(entry => entry && (entry.coach || '').trim())
+        .map(entry => ({
+          coach: (entry.coach || '').trim(),
+          startDate: entry.startDate || ''
+        }))
+    : [];
+
+  history.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+
+  if (!history.length && (s?.coach || '').trim()) {
+    history.push({ coach: (s.coach || '').trim(), startDate: s.programStartDate || '' });
+  }
+
+  return history;
+}
+
+function mergeCoachAccessWindows(windows) {
+  const sorted = (windows || [])
+    .filter(window => window && (window.start || window.end || window.current))
+    .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+
+  const merged = [];
+  sorted.forEach(window => {
+    const last = merged[merged.length - 1];
+    if (!last) {
+      merged.push({ ...window });
+      return;
+    }
+
+    const lastEnd = last.end || '9999-12-31';
+    const nextStart = window.start || '';
+    const isTouching = !window.start || !last.end || nextStart <= addDaysToIso(lastEnd, 1);
+
+    if (isTouching) {
+      if (!last.end || !window.end) last.end = '';
+      else if (window.end > last.end) last.end = window.end;
+      last.current = last.current || !!window.current;
+      if (!last.start || (window.start && window.start < last.start)) last.start = window.start;
+      return;
+    }
+
+    merged.push({ ...window });
+  });
+
+  return merged;
+}
+
+function getCoachAccessWindows(s, coachName) {
+  const coachKey = accessKey(coachName);
+  if (!s || !coachKey) return [];
+
+  const history = getSortedCoachHistory(s);
+  if (!history.length) {
+    return accessKey(s.coach) === coachKey
+      ? [{ start: s.programStartDate || '', end: '', current: true }]
+      : [];
+  }
+
+  const windows = [];
+  history.forEach((entry, index) => {
+    if (accessKey(entry.coach) !== coachKey) return;
+    const nextEntry = history[index + 1];
+    windows.push({
+      start: entry.startDate || s.programStartDate || '',
+      end: nextEntry?.startDate ? addDaysToIso(nextEntry.startDate, -1) : '',
+      current: index === history.length - 1
+    });
+  });
+
+  if (!windows.length && accessKey(s.coach) === coachKey) {
+    const fallbackStart = history[history.length - 1]?.startDate || s.programStartDate || '';
+    windows.push({ start: fallbackStart, end: '', current: true });
+  }
+
+  return mergeCoachAccessWindows(windows);
+}
+
+function getCoachStudentAccess(s, coachName) {
+  if (!s || !coachName) return { canView: false, isCurrent: false, windows: [] };
+  const windows = getCoachAccessWindows(s, coachName);
+  const isCurrent = isAssignedToCoach(s, coachName) || (!windows.length && accessKey(s.coach) === accessKey(coachName));
+  return {
+    canView: isCurrent || windows.length > 0,
+    isCurrent,
+    windows
+  };
+}
+
+function isDateWithinCoachWindows(dateStr, windows) {
+  if (!dateStr) return false;
+  if (!Array.isArray(windows) || !windows.length) return true;
+  return windows.some(window => (!window.start || dateStr >= window.start) && (!window.end || dateStr <= window.end));
+}
+
+function getProgramDateRange(programLike) {
+  if (!programLike?.programStartDate) return null;
+  const start = programLike.programStartDate;
+  return {
+    start,
+    end: addDaysToIso(start, Logic.totalDays(programLike) - 1)
+  };
+}
+
+function doesProgramOverlapCoachWindows(programLike, windows) {
+  const range = getProgramDateRange(programLike);
+  if (!range) return false;
+  if (!Array.isArray(windows) || !windows.length) return true;
+  return windows.some(window => {
+    const winStart = window.start || '';
+    const winEnd = window.end || '9999-12-31';
+    return range.start <= winEnd && range.end >= winStart;
+  });
+}
+
+function formatCoachWindowsSummary(windows) {
+  if (!Array.isArray(windows) || !windows.length) return '';
+  return windows.map(window => {
+    if (window.start && window.end) return `${fmtDate(window.start)} - ${fmtDate(window.end)}`;
+    if (window.start) return `${fmtDate(window.start)} onward`;
+    if (window.end) return `Until ${fmtDate(window.end)}`;
+    return '';
+  }).filter(Boolean).join('; ');
+}
+
+function canCurrentUserListStudent(s) {
+  if (_userRole !== 'coach') return true;
+  return getCoachStudentAccess(s, _coachName).isCurrent;
+}
+
 function canCurrentUserAccessStudent(s) {
-  return _userRole !== 'coach' || isAssignedToCoach(s, _coachName);
+  if (_userRole !== 'coach') return true;
+  return getCoachStudentAccess(s, _coachName).canView;
+}
+
+function canCurrentUserManageStudent(s) {
+  if (_userRole !== 'coach') return true;
+  return getCoachStudentAccess(s, _coachName).isCurrent;
 }
 
 // â”€â”€â”€ REAL-TIME SYNC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1459,7 +1605,7 @@ const _cache = { students: [], coaches: [], deletedCoachNames: [], backupLastDow
 
 const DB = {
   all() {
-    return _cache.students.filter(canCurrentUserAccessStudent);
+    return _cache.students.filter(canCurrentUserListStudent);
   },
   get(id) {
     const student = _cache.students.find(s => s.id === id) || null;
@@ -1753,7 +1899,7 @@ function changeProgramStartDate(studentId, programIdx) {
   const s = DB.get(studentId);
   if (!s) return;
   if (!canEditProgramStartDate(s, programIdx)) {
-    alert('Only admins can change 1st program start dates.');
+    alert('You can only change start dates for programs you currently manage.');
     return;
   }
   progStartDateCtx = { studentId, programIdx };
@@ -4427,6 +4573,16 @@ function goStudent(id) {
         const _pDone = Math.min(Math.round((Logic.completed(_pObj) + _pCarry) * 10) / 10, _pTotal);
         if (_pDone < _pTotal) { _currentProgI = j; break; }
       }
+      if (_userRole === 'coach') {
+        const coachAccess = getCoachStudentAccess(_s, _coachName);
+        if (coachAccess.canView && !coachAccess.isCurrent && coachAccess.windows.length) {
+          const visiblePrograms = Array.from({ length: _totalProgs }, (_, j) => j).filter(j => {
+            const pObj = getProgramObjAt(_s, j);
+            return pObj.programStartDate && doesProgramOverlapCoachWindows(pObj, coachAccess.windows);
+          });
+          if (visiblePrograms.length) _currentProgI = visiblePrograms[visiblePrograms.length - 1];
+        }
+      }
       activeProgramCtx[id] = _currentProgI;
     } catch (err) {
       console.error('Failed to resolve active program for student', { studentId: id, error: err, student: _s });
@@ -4518,227 +4674,256 @@ function setStudentDateFilter(key, value) {
 // â”€â”€â”€ DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderDashboard() {
   try {
-  const students = DB.all();
-  const grid = document.getElementById('students-grid');
+    const isCoach = isCoachUser();
+    const students = isCoach ? _cache.students.filter(canCurrentUserAccessStudent) : DB.all();
+    const grid = document.getElementById('students-grid');
 
-  if (_userRole === 'coach' && !_coachName) {
-    grid.innerHTML = `
-      <div class="empty-state">
-        <div class="ei">&bull;</div>
-        <h3>Coach profile not linked</h3>
-        <p>This login is not connected to a coach name yet. Ask a team user to recreate or update this coach login.</p>
-      </div>`;
-    return;
-  }
-
-  if (!students.length) {
-    grid.innerHTML = `
-      <div class="empty-state">
-        <div class="ei">&bull;</div>
-        <h3>${_userRole === 'coach' ? 'No assigned students' : 'No students yet'}</h3>
-        <p>${_userRole === 'coach' ? 'Only students currently assigned to your coach profile will appear here.' : 'Click "+ New Student" to add your first student profile.'}</p>
-      </div>`;
-    return;
-  }
-
-  const todayStr = localDateStr(new Date());
-
-  // Apply search filter
-  const searchQ = (document.getElementById('student-search')?.value || '').trim().toLowerCase();
-  const filteredStudents = searchQ
-    ? students.filter(s =>
-        (s.fullName || s.name || '').toLowerCase().includes(searchQ) ||
-        (s.coach || '').toLowerCase().includes(searchQ)
-      )
-    : students;
-
-  if (!filteredStudents.length) {
-    grid.innerHTML = `<div class="empty-state"><div class="ei">&bull;</div><h3>No results found</h3><p>No students match "<strong>${esc(searchQ)}</strong>".</p></div>`;
-    return;
-  }
-
-  // â”€â”€ Build sort values per student before sorting â”€â”€
-  let withMeta = filteredStudents.map(s => {
-    const totalPrograms = 1 + (s.renewals || []).length;
-    let currentProgI = totalPrograms - 1;
-    for (let j = 0; j < totalPrograms; j++) {
-      const pObj = getProgramObjAt(s, j);
-      const pTotal = Logic.totalSessions(pObj);
-      const pCarry = getProgramCarryOver(s, j);
-      const pDone = Math.min(Math.round((Logic.completed(pObj) + pCarry) * 10) / 10, pTotal);
-      if (pDone < pTotal) { currentProgI = j; break; }
+    if (isCoach && !_coachName) {
+      grid.innerHTML = `
+        <div class="empty-state">
+          <div class="ei">&bull;</div>
+          <h3>Coach profile not linked</h3>
+          <p>This login is not connected to a coach name yet. Ask a team user to recreate or update this coach login.</p>
+        </div>`;
+      return;
     }
-    const currProg = getProgramObjAt(s, currentProgI);
-    const carryOver = getProgramCarryOver(s, currentProgI);
-    const total = Logic.totalSessions(currProg);
-    const rawDone = Math.round((Logic.completed(currProg) + carryOver) * 10) / 10;
-    const done = Math.min(rawDone, total);
-    const remaining = Math.max(0, Math.round((total - done) * 10) / 10);
-    const allSessions = [...(s.sessions || []), ...((s.renewals || []).flatMap(r => r.sessions || []))];
-    const lastSessDate = allSessions.filter(x => x.date).map(x => x.date).sort().pop() || '';
-    const startDate = currProg.programStartDate || '';
-    const startPending = isProgramStartPending(currProg) || !startDate;
-    const endDate = startDate ? localDateStr(new Date(new Date(startDate + 'T00:00:00').getTime() + (Logic.totalDays(currProg) - 1) * 86400000)) : '';
-    const _allPauses = [...(s.pauses || []), ...(s.renewals || []).flatMap(r => r.pauses || [])];
-    const isPaused = _allPauses.some(p => pauseContainsDate(p, todayStr));
-    const statusOrder = s.withdrawn ? 3 : done >= total && total > 0 ? 2 : isPaused ? 1 : 0;
-    return { s, total, done, remaining, lastSessDate, startDate, startPending, endDate, statusOrder, currentProgI };
-  });
 
-  const dateFilters = getStudentDateFilters();
-  const hasDateFilters = hasStudentDateFilters(dateFilters);
-  if (hasDateFilters) {
-    withMeta = withMeta.filter(x =>
-      isDateInRange(x.lastSessDate, dateFilters.lastFrom, dateFilters.lastTo) &&
-      isDateInRange(x.startDate, dateFilters.startFrom, dateFilters.startTo) &&
-      isDateInRange(x.endDate, dateFilters.endFrom, dateFilters.endTo)
-    );
-  }
+    if (!students.length) {
+      grid.innerHTML = `
+        <div class="empty-state">
+          <div class="ei">&bull;</div>
+          <h3>${isCoach ? 'No students available' : 'No students yet'}</h3>
+          <p>${isCoach ? 'Current students and previously coached students will appear here once they are linked to your coach history.' : 'Click "+ New Student" to add your first student profile.'}</p>
+        </div>`;
+      return;
+    }
 
-  if (!withMeta.length) {
-    grid.innerHTML = `<div class="empty-state"><div class="ei">&bull;</div><h3>No results found</h3><p>No students match the current ${hasDateFilters ? 'date filters' : 'filters'}.</p>${hasDateFilters ? '<button class="btn btn-secondary btn-sm" onclick="clearStudentDateFilters()" style="margin-top:10px">Clear Date Filters</button>' : ''}</div>`;
-    return;
-  }
+    const todayStr = localDateStr(new Date());
+    const searchQ = (document.getElementById('student-search')?.value || '').trim().toLowerCase();
+    const filteredStudents = searchQ
+      ? students.filter(s =>
+          (s.fullName || s.name || '').toLowerCase().includes(searchQ) ||
+          (s.coach || '').toLowerCase().includes(searchQ) ||
+          (s.coachHistory || []).some(entry => (entry?.coach || '').toLowerCase().includes(searchQ))
+        )
+      : students;
 
-  const comparePendingStart = (a, b) =>
-    a.startPending === b.startPending ? 0 : a.startPending ? -1 : 1;
+    if (!filteredStudents.length) {
+      grid.innerHTML = `<div class="empty-state"><div class="ei">&bull;</div><h3>No results found</h3><p>No students match "<strong>${esc(searchQ)}</strong>".</p></div>`;
+      return;
+    }
 
-  // â”€â”€ Apply sort â”€â”€
-  if (dashSort.col) {
-    const mul = dashSort.dir === 'asc' ? 1 : -1;
-    withMeta.sort((a, b) => {
-      const pendingOrder = comparePendingStart(a, b);
-      if (pendingOrder) return pendingOrder;
-
-      let av, bv;
-      switch (dashSort.col) {
-        case 'student':   av = (a.s.fullName || '').toLowerCase(); bv = (b.s.fullName || '').toLowerCase(); break;
-        case 'coach':     av = (a.s.coach || '').toLowerCase();    bv = (b.s.coach || '').toLowerCase();    break;
-        case 'status':    av = a.statusOrder;  bv = b.statusOrder;  break;
-        case 'program':   av = a.currentProgI; bv = b.currentProgI; break;
-        case 'total':     av = a.total;        bv = b.total;        break;
-        case 'done':      av = a.done;         bv = b.done;         break;
-        case 'remaining': av = a.remaining;    bv = b.remaining;    break;
-        case 'last':      av = a.lastSessDate; bv = b.lastSessDate; break;
-        case 'start':     av = a.startDate;    bv = b.startDate;    break;
-        case 'end':       av = a.endDate;      bv = b.endDate;      break;
-        default: return 0;
+    let withMeta = filteredStudents.map(s => {
+      const totalPrograms = 1 + (s.renewals || []).length;
+      let currentProgI = totalPrograms - 1;
+      for (let j = 0; j < totalPrograms; j++) {
+        const pObj = getProgramObjAt(s, j);
+        const pTotal = Logic.totalSessions(pObj);
+        const pCarry = getProgramCarryOver(s, j);
+        const pDone = Math.min(Math.round((Logic.completed(pObj) + pCarry) * 10) / 10, pTotal);
+        if (pDone < pTotal) { currentProgI = j; break; }
       }
-      if (av < bv) return -1 * mul;
-      if (av > bv) return  1 * mul;
-      return 0;
+
+      const currProg = getProgramObjAt(s, currentProgI);
+      const carryOver = getProgramCarryOver(s, currentProgI);
+      const total = Logic.totalSessions(currProg);
+      const rawDone = Math.round((Logic.completed(currProg) + carryOver) * 10) / 10;
+      const done = Math.min(rawDone, total);
+      const remaining = Math.max(0, Math.round((total - done) * 10) / 10);
+      const allSessions = [...(s.sessions || []), ...((s.renewals || []).flatMap(r => r.sessions || []))];
+      const lastSessDate = allSessions.filter(x => x.date).map(x => x.date).sort().pop() || '';
+      const startDate = currProg.programStartDate || '';
+      const startPending = isProgramStartPending(currProg) || !startDate;
+      const endDate = startDate ? addDaysToIso(startDate, Logic.totalDays(currProg) - 1) : '';
+      const allPauses = [...(s.pauses || []), ...(s.renewals || []).flatMap(r => r.pauses || [])];
+      const isPaused = allPauses.some(p => pauseContainsDate(p, todayStr));
+      const statusOrder = s.withdrawn ? 3 : done >= total && total > 0 ? 2 : isPaused ? 1 : 0;
+      const coachAccess = isCoach ? getCoachStudentAccess(s, _coachName) : null;
+
+      return {
+        s,
+        currProg,
+        total,
+        done,
+        remaining,
+        lastSessDate,
+        startDate,
+        startPending,
+        endDate,
+        statusOrder,
+        currentProgI,
+        isCurrentCoach: coachAccess ? coachAccess.isCurrent : false
+      };
     });
-  } else {
-    withMeta.sort(comparePendingStart);
-  }
 
-  const rows = withMeta.map(({ s }) => {
-    const totalPrograms = 1 + (s.renewals || []).length;
-
-    // Find current program = first incomplete one
-    let currentProgI = totalPrograms - 1;
-    for (let j = 0; j < totalPrograms; j++) {
-      const pObj = getProgramObjAt(s, j);
-      const pTotal = Logic.totalSessions(pObj);
-      const pCarry = getProgramCarryOver(s, j);
-      const pDone = Math.min(Math.round((Logic.completed(pObj) + pCarry) * 10) / 10, pTotal);
-      if (pDone < pTotal) { currentProgI = j; break; }
-    }
-    const currProg = getProgramObjAt(s, currentProgI);
-    const pt = getProgramType(currProg);
-    const carryOver = getProgramCarryOver(s, currentProgI);
-    const total = Logic.totalSessions(currProg);
-    const rawDone = Math.round((Logic.completed(currProg) + carryOver) * 10) / 10;
-    const done = Math.min(rawDone, total);
-    const remaining = Math.max(0, Math.round((total - done) * 10) / 10);
-    const pct = total ? Math.min(100, Math.round(done / total * 100)) : 0;
-    const allDone = done >= total && total > 0;
-
-    // Status â€” check ALL pauses (top-level + renewals) since pauses may be in any slot
-    const _allPauses = [...(s.pauses || []), ...(s.renewals || []).flatMap(r => r.pauses || [])];
-    const isPaused = _allPauses.some(p => pauseContainsDate(p, todayStr));
-    const statusBadge = s.withdrawn
-      ? `<span class="badge badge-withdrawn" style="white-space:nowrap">Withdrawn</span>`
-      : allDone
-        ? `<span class="badge" style="background:#DCFCE7;color:#14532D;border:1px solid #86EFAC;white-space:nowrap">Complete</span>`
-        : isPaused
-          ? `<span class="badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;white-space:nowrap">Paused</span>`
-          : `<span class="badge" style="background:#DCFCE7;color:#14532D;border:1px solid #86EFAC;white-space:nowrap">Active</span>`;
-
-    // Last session â€” check all programs (including renewals)
-    const allSessions = [
-      ...(s.sessions || []),
-      ...((s.renewals || []).flatMap(r => r.sessions || []))
-    ];
-    const lastSessDate = allSessions.filter(x => x.date).map(x => x.date).sort().pop();
-    let lastSessCell = `<span style="color:var(--gray-400);font-size:13px">-</span>`;
-    if (lastSessDate) {
-      const days = Math.floor((new Date(todayStr + 'T00:00:00') - new Date(lastSessDate + 'T00:00:00')) / 86400000);
-      const isRed = days >= 8;
-      const dColor = days === 0 ? '#14532D' : isRed ? '#991B1B' : '#92400E';
-      const dBg   = days === 0 ? '#DCFCE7' : isRed ? '#FEE2E2' : '#FEF3C7';
-      const dLabel = days === 0 ? 'Today' : days === 1 ? '1 day ago' : `${days} days ago`;
-      lastSessCell = `<span style="font-size:12px;font-weight:700;color:${dColor};background:${dBg};padding:2px 8px;border-radius:6px;white-space:nowrap">${dLabel}</span>`;
+    const dateFilters = getStudentDateFilters();
+    const hasDateFilters = hasStudentDateFilters(dateFilters);
+    if (hasDateFilters) {
+      withMeta = withMeta.filter(x =>
+        isDateInRange(x.lastSessDate, dateFilters.lastFrom, dateFilters.lastTo) &&
+        isDateInRange(x.startDate, dateFilters.startFrom, dateFilters.startTo) &&
+        isDateInRange(x.endDate, dateFilters.endFrom, dateFilters.endTo)
+      );
     }
 
-    // Start & end dates from current program
-    const startDate = currProg.programStartDate;
-    const startPending = isProgramStartPending(currProg) || !startDate;
-    const endDate = startDate ? localDateStr(new Date(new Date(startDate + 'T00:00:00').getTime() + (Logic.totalDays(currProg) - 1) * 86400000)) : null;
+    if (!withMeta.length) {
+      grid.innerHTML = `<div class="empty-state"><div class="ei">&bull;</div><h3>No results found</h3><p>No students match the current ${hasDateFilters ? 'date filters' : 'filters'}.</p>${hasDateFilters ? '<button class="btn btn-secondary btn-sm" onclick="clearStudentDateFilters()" style="margin-top:10px">Clear Date Filters</button>' : ''}</div>`;
+      return;
+    }
 
-    return `<tr style="border-bottom:1px solid var(--gray-200);cursor:pointer;transition:background .12s" onclick="goStudent('${s.id}')" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
-      <td style="padding:12px 16px;min-width:160px">
-        <div style="font-size:14px;font-weight:700;color:var(--gray-800)">${esc(s.fullName)}</div>
-        <div style="font-size:12px;color:var(--gray-500);margin-top:2px">Coach: ${esc(s.coach || '-')}</div>
-      </td>
-      <td style="padding:12px 16px">${statusBadge}</td>
-      <td style="padding:12px 16px">
-        <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
-          <span class="badge badge-program-num">${getDisplayedProgramLabel(s, currentProgI)}</span>
-          <span class="badge badge-${currProg.programType || s.programType}">${pt.label}</span>
-        </div>
-      </td>
-      <td style="padding:12px 16px;text-align:center">
-        <div style="font-size:18px;font-weight:700;color:var(--gray-700)">${total}</div>
-        <div style="height:4px;background:var(--gray-200);border-radius:99px;margin-top:4px;width:60px">
-          <div style="height:4px;background:${pct===100?'#16A34A':'#DC2626'};border-radius:99px;width:${pct}%"></div>
-        </div>
-      </td>
-      <td style="padding:12px 16px;text-align:center;font-size:18px;font-weight:700;color:#14532D">${done}</td>
-      <td style="padding:12px 16px;text-align:center;font-size:18px;font-weight:700;color:#991B1B">${remaining}</td>
-      <td style="padding:12px 16px">${lastSessCell}</td>
-      <td style="padding:12px 16px;font-size:12px;color:var(--gray-600);white-space:nowrap">${startPending ? dashboardPendingStartBadge() : fmtDate(startDate)}</td>
-      <td style="padding:12px 16px;font-size:12px;color:var(--gray-600);white-space:nowrap">${endDate ? fmtDate(endDate) : '-'}</td>
-    </tr>`;
-  }).join('');
+    const comparePendingStart = (a, b) =>
+      a.startPending === b.startPending ? 0 : a.startPending ? -1 : 1;
 
-  const th = (txt, col) => {
-    const active = dashSort.col === col;
-    const arrow = active ? (dashSort.dir === 'asc' ? ' &#9650;' : ' &#9660;') : ' <span style="opacity:.25">&#8597;</span>';
-    const dateFilterMap = {
-      last: ['lastFrom', 'lastTo', 'Last session'],
-      start: ['startFrom', 'startTo', 'Start date'],
-      end: ['endFrom', 'endTo', 'End date']
+    if (dashSort.col) {
+      const mul = dashSort.dir === 'asc' ? 1 : -1;
+      withMeta.sort((a, b) => {
+        const pendingOrder = comparePendingStart(a, b);
+        if (pendingOrder) return pendingOrder;
+
+        let av, bv;
+        switch (dashSort.col) {
+          case 'student':   av = (a.s.fullName || '').toLowerCase(); bv = (b.s.fullName || '').toLowerCase(); break;
+          case 'coach':     av = (a.s.coach || '').toLowerCase();    bv = (b.s.coach || '').toLowerCase();    break;
+          case 'status':    av = a.statusOrder;  bv = b.statusOrder;  break;
+          case 'program':   av = a.currentProgI; bv = b.currentProgI; break;
+          case 'total':     av = a.total;        bv = b.total;        break;
+          case 'done':      av = a.done;         bv = b.done;         break;
+          case 'remaining': av = a.remaining;    bv = b.remaining;    break;
+          case 'last':      av = a.lastSessDate; bv = b.lastSessDate; break;
+          case 'start':     av = a.startDate;    bv = b.startDate;    break;
+          case 'end':       av = a.endDate;      bv = b.endDate;      break;
+          default: return 0;
+        }
+        if (av < bv) return -1 * mul;
+        if (av > bv) return 1 * mul;
+        return 0;
+      });
+    } else {
+      withMeta.sort(comparePendingStart);
+    }
+
+    const buildRow = meta => {
+      const { s, currProg, total, done, remaining, currentProgI, startDate, startPending, endDate, lastSessDate } = meta;
+      const pt = getProgramType(currProg);
+      const pct = total ? Math.min(100, Math.round(done / total * 100)) : 0;
+      const allDone = done >= total && total > 0;
+      const allPauses = [...(s.pauses || []), ...(s.renewals || []).flatMap(r => r.pauses || [])];
+      const isPaused = allPauses.some(p => pauseContainsDate(p, todayStr));
+      const statusBadge = s.withdrawn
+        ? `<span class="badge badge-withdrawn" style="white-space:nowrap">Withdrawn</span>`
+        : allDone
+          ? `<span class="badge" style="background:#DCFCE7;color:#14532D;border:1px solid #86EFAC;white-space:nowrap">Complete</span>`
+          : isPaused
+            ? `<span class="badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;white-space:nowrap">Paused</span>`
+            : `<span class="badge" style="background:#DCFCE7;color:#14532D;border:1px solid #86EFAC;white-space:nowrap">Active</span>`;
+
+      let lastSessCell = `<span style="color:var(--gray-400);font-size:13px">-</span>`;
+      if (lastSessDate) {
+        const days = Math.floor((new Date(todayStr + 'T00:00:00') - new Date(lastSessDate + 'T00:00:00')) / 86400000);
+        const isRed = days >= 8;
+        const dColor = days === 0 ? '#14532D' : isRed ? '#991B1B' : '#92400E';
+        const dBg = days === 0 ? '#DCFCE7' : isRed ? '#FEE2E2' : '#FEF3C7';
+        const dLabel = days === 0 ? 'Today' : days === 1 ? '1 day ago' : `${days} days ago`;
+        lastSessCell = `<span style="font-size:12px;font-weight:700;color:${dColor};background:${dBg};padding:2px 8px;border-radius:6px;white-space:nowrap">${dLabel}</span>`;
+      }
+
+      return `<tr style="border-bottom:1px solid var(--gray-200);cursor:pointer;transition:background .12s" onclick="goStudent('${s.id}')" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
+        <td style="padding:12px 16px;min-width:160px">
+          <div style="font-size:14px;font-weight:700;color:var(--gray-800)">${esc(s.fullName)}</div>
+          <div style="font-size:12px;color:var(--gray-500);margin-top:2px">Coach: ${esc(s.coach || '-')}</div>
+        </td>
+        <td style="padding:12px 16px">${statusBadge}</td>
+        <td style="padding:12px 16px">
+          <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+            <span class="badge badge-program-num">${getDisplayedProgramLabel(s, currentProgI)}</span>
+            <span class="badge badge-${currProg.programType || s.programType}">${pt.label}</span>
+          </div>
+        </td>
+        <td style="padding:12px 16px;text-align:center">
+          <div style="font-size:18px;font-weight:700;color:var(--gray-700)">${total}</div>
+          <div style="height:4px;background:var(--gray-200);border-radius:99px;margin-top:4px;width:60px">
+            <div style="height:4px;background:${pct === 100 ? '#16A34A' : '#DC2626'};border-radius:99px;width:${pct}%"></div>
+          </div>
+        </td>
+        <td style="padding:12px 16px;text-align:center;font-size:18px;font-weight:700;color:#14532D">${done}</td>
+        <td style="padding:12px 16px;text-align:center;font-size:18px;font-weight:700;color:#991B1B">${remaining}</td>
+        <td style="padding:12px 16px">${lastSessCell}</td>
+        <td style="padding:12px 16px;font-size:12px;color:var(--gray-600);white-space:nowrap">${startPending ? dashboardPendingStartBadge() : fmtDate(startDate)}</td>
+        <td style="padding:12px 16px;font-size:12px;color:var(--gray-600);white-space:nowrap">${endDate ? fmtDate(endDate) : '-'}</td>
+      </tr>`;
     };
-    const dateFilter = dateFilterMap[col];
-    const filterHTML = dateFilter ? `
-      <div onclick="event.stopPropagation()" style="display:flex;gap:4px;margin-top:6px;min-width:154px">
-        <input type="date" value="${studentDateFilters[dateFilter[0]]}" onchange="setStudentDateFilter('${dateFilter[0]}', this.value)" title="${dateFilter[2]} from" style="width:74px;min-width:0;border:1px solid var(--gray-300);border-radius:6px;padding:3px 4px;font-family:inherit;font-size:10px;font-weight:500;text-transform:none;letter-spacing:0;background:white;color:var(--gray-700)">
-        <input type="date" value="${studentDateFilters[dateFilter[1]]}" onchange="setStudentDateFilter('${dateFilter[1]}', this.value)" title="${dateFilter[2]} to" style="width:74px;min-width:0;border:1px solid var(--gray-300);border-radius:6px;padding:3px 4px;font-family:inherit;font-size:10px;font-weight:500;text-transform:none;letter-spacing:0;background:white;color:var(--gray-700)">
-      </div>` : '';
-    return `<th onclick="setDashSort('${col}')" style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;border-bottom:2px solid var(--gray-200);cursor:pointer;user-select:none;color:${active ? 'var(--green)' : 'var(--gray-500)'};background:${active ? '#FEF2F2' : 'transparent'};transition:background .15s" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='${active ? '#FEF2F2' : 'transparent'}'">
-      <div>${txt}${arrow}</div>${filterHTML}
-    </th>`;
-  };
 
-  grid.innerHTML = `<div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--gray-200);box-shadow:var(--shadow-sm)"><table style="width:100%;min-width:860px;border-collapse:collapse;background:white">
-    <thead style="background:var(--gray-50)">
-      <tr>
-        ${th('Student','student')}${th('Status','status')}${th('Current Program','program')}${th('Total','total')}${th('Done','done')}${th('Remaining','remaining')}${th('Last Session','last')}${th('Start Date','start')}${th('End Date','end')}
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table></div>`;
+    const th = (txt, col, includeFilters = true) => {
+      const active = dashSort.col === col;
+      const arrow = active ? (dashSort.dir === 'asc' ? ' &#9650;' : ' &#9660;') : ' <span style="opacity:.25">&#8597;</span>';
+      const dateFilterMap = {
+        last: ['lastFrom', 'lastTo', 'Last session'],
+        start: ['startFrom', 'startTo', 'Start date'],
+        end: ['endFrom', 'endTo', 'End date']
+      };
+      const dateFilter = includeFilters ? dateFilterMap[col] : null;
+      const filterHTML = dateFilter ? `
+        <div onclick="event.stopPropagation()" style="display:flex;gap:4px;margin-top:6px;min-width:154px">
+          <input type="date" value="${studentDateFilters[dateFilter[0]]}" onchange="setStudentDateFilter('${dateFilter[0]}', this.value)" title="${dateFilter[2]} from" style="width:74px;min-width:0;border:1px solid var(--gray-300);border-radius:6px;padding:3px 4px;font-family:inherit;font-size:10px;font-weight:500;text-transform:none;letter-spacing:0;background:white;color:var(--gray-700)">
+          <input type="date" value="${studentDateFilters[dateFilter[1]]}" onchange="setStudentDateFilter('${dateFilter[1]}', this.value)" title="${dateFilter[2]} to" style="width:74px;min-width:0;border:1px solid var(--gray-300);border-radius:6px;padding:3px 4px;font-family:inherit;font-size:10px;font-weight:500;text-transform:none;letter-spacing:0;background:white;color:var(--gray-700)">
+        </div>` : '';
+      return `<th onclick="setDashSort('${col}')" style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;border-bottom:2px solid var(--gray-200);cursor:pointer;user-select:none;color:${active ? 'var(--green)' : 'var(--gray-500)'};background:${active ? '#FEF2F2' : 'transparent'};transition:background .15s" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='${active ? '#FEF2F2' : 'transparent'}'">
+        <div>${txt}${arrow}</div>${filterHTML}
+      </th>`;
+    };
+
+    const buildTable = (items, includeFilters = true) => {
+      const rows = items.map(buildRow).join('');
+      return `<div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--gray-200);box-shadow:var(--shadow-sm)"><table style="width:100%;min-width:860px;border-collapse:collapse;background:white">
+        <thead style="background:var(--gray-50)">
+          <tr>
+            ${th('Student','student', includeFilters)}${th('Status','status', includeFilters)}${th('Current Program','program', includeFilters)}${th('Total','total', includeFilters)}${th('Done','done', includeFilters)}${th('Remaining','remaining', includeFilters)}${th('Last Session','last', includeFilters)}${th('Start Date','start', includeFilters)}${th('End Date','end', includeFilters)}
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+    };
+
+    if (!isCoach) {
+      grid.innerHTML = buildTable(withMeta, true);
+      return;
+    }
+
+    const currentStudents = withMeta.filter(meta => meta.isCurrentCoach);
+    const previousStudents = withMeta.filter(meta => !meta.isCurrentCoach);
+    let filtersPlaced = false;
+
+    const buildCoachSection = (title, subtitle, items, emptyMessage) => {
+      const tableHtml = items.length
+        ? buildTable(items, !filtersPlaced)
+        : `<div style="background:white;border:1px solid var(--gray-200);border-radius:var(--radius);padding:18px 20px;color:var(--gray-500);box-shadow:var(--shadow-sm)">${emptyMessage}</div>`;
+      if (items.length && !filtersPlaced) filtersPlaced = true;
+
+      return `<div style="margin-bottom:18px">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:16px;font-weight:800;color:var(--gray-800)">${title}</div>
+            <div style="font-size:13px;color:var(--gray-500);margin-top:2px">${subtitle}</div>
+          </div>
+          <div style="font-size:12px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">${items.length} student${items.length !== 1 ? 's' : ''}</div>
+        </div>
+        ${tableHtml}
+      </div>`;
+    };
+
+    grid.innerHTML = `
+      ${buildCoachSection(
+        'Current Students',
+        'Students currently assigned to you.',
+        currentStudents,
+        'No students are currently assigned to you.'
+      )}
+      ${buildCoachSection(
+        'Previously Coached Students',
+        'Students you coached before they were reassigned or moved on.',
+        previousStudents,
+        'No previously coached students match the current filters.'
+      )}`;
   } catch(e) {
     const grid = document.getElementById('students-grid');
     if (grid) grid.innerHTML = `<div style="padding:20px;color:red;font-size:13px;font-family:monospace">Dashboard error: ${e.message}<br><pre>${e.stack}</pre></div>`;
@@ -4773,7 +4958,10 @@ function renderStudent(id) {
   if (!s) { goDashboard(); return; }
   try {
     if (autoFixProgramStartDates(s)) DB.upsert(s);
-    const canManageStudent = isAdminUser();
+    const coachAccess = isCoachUser() ? getCoachStudentAccess(s, _coachName) : null;
+    const limitedCoachView = isCoachUser() && !!coachAccess && !coachAccess.isCurrent;
+    const canManageStudent = isAdminUser() || (isCoachUser() ? !!coachAccess?.isCurrent : true);
+    const coachWindowSummary = limitedCoachView ? formatCoachWindowsSummary(coachAccess.windows) : '';
 
     const activeProg = getProgramObj(s);
     const activeProgramIdx = getActiveProgramIdx(s.id);
@@ -4821,6 +5009,14 @@ function renderStudent(id) {
       <span>${pendingStart ? 'Use + Log Session on Day 1 and enter the date there. The first logged session date becomes the start date of the program.' : 'Add a program start date in the profile to automatically detect missed sessions per week.'}</span></div>
     </div>`;
   }
+
+  const limitedCoachAlert = limitedCoachView
+    ? `<div class="alert alert-info">
+        <span class="alert-icon">!</span>
+        <div class="alert-body"><strong>Previous Coaching Access</strong>
+        <span>You can still review this student profile, but the session log is limited to the dates you handled${coachWindowSummary ? ` (${esc(coachWindowSummary)})` : ''}.</span></div>
+      </div>`
+    : '';
 
 
   document.getElementById('student-container').innerHTML = `
@@ -4900,6 +5096,7 @@ function renderStudent(id) {
     </div>
 
     ${alert}
+    ${limitedCoachAlert}
 
     <!-- Profile Section -->
     <div class="section open" id="sec-profile">
@@ -5004,8 +5201,8 @@ function renderStudent(id) {
       </div>
       <div class="sec-body hidden">
         <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px">Add pause periods when the program is on hold. Pause rows will appear in the session log and weeks after the pause will automatically shift.</p>
-        ${buildStudentPauseList(s)}
-        <button class="btn btn-secondary btn-sm" onclick="openPauseForm('${s.id}')">+ Add Pause</button>
+        ${buildStudentPauseList(s, canManageStudent)}
+        ${canManageStudent ? `<button class="btn btn-secondary btn-sm" onclick="openPauseForm('${s.id}')">+ Add Pause</button>` : ''}
       </div>
     </div>
 
@@ -5019,7 +5216,7 @@ function renderStudent(id) {
         <ul class="checklist">
           ${checks.map(c => `
             <li class="${s.checklist[c.k] ? 'done' : ''}">
-              <input type="checkbox" ${s.checklist[c.k] ? 'checked' : ''} onchange="toggleCheck('${s.id}','${c.k}',this.checked)">
+              <input type="checkbox" ${s.checklist[c.k] ? 'checked' : ''} ${canManageStudent ? '' : 'disabled'} onchange="toggleCheck('${s.id}','${c.k}',this.checked)">
               <span>${esc(c.t)}</span>
             </li>`).join('')}
         </ul>
@@ -5033,7 +5230,11 @@ function renderStudent(id) {
         <span class="sec-toggle">&#9660;</span>
       </div>
       <div class="sec-body" style="padding:0">
-        ${buildAllProgramsLog(s)}
+        ${buildAllProgramsLog(s, {
+          canManageStudent,
+          readOnly: limitedCoachView,
+          visibleWindows: limitedCoachView ? coachAccess.windows : null
+        })}
       </div>
     </div>
 
@@ -5141,12 +5342,13 @@ function getProgramOverflowInfo(s, programIdx) {
   return { carryIn, carryOut, overflowMap, overflowSessions };
 }
 
-function buildEOPBlock(s, programIdx) {
+function buildEOPBlock(s, programIdx, canManage = true) {
   const eopData = programIdx === 0
     ? (s.eop || {})
     : ((s.renewals || [])[programIdx - 1]?.eop || {});
   const strengths = eopData.strengths || '';
   const focusAreas = eopData.focusAreas || '';
+  const readOnlyAttrs = canManage ? '' : 'readonly style="background:#F9FAFB;color:#6B7280"';
   return `<div style="border-top:2px solid var(--gray-200);background:white">
     <div style="display:flex;align-items:center;padding:12px 20px;gap:10px;background:var(--gray-50)">
       <span style="font-size:14px;font-weight:700;color:var(--gray-700)">End of Program Summary</span>
@@ -5156,22 +5358,24 @@ function buildEOPBlock(s, programIdx) {
       <div class="eop-grid">
         <div class="eop-field">
           <label>Key Strengths</label>
-          <textarea id="eop-strengths-${programIdx}" placeholder="e.g. Great improvement in conversational fluency, strong vocabulary retention...">${esc(strengths)}</textarea>
+          <textarea id="eop-strengths-${programIdx}" ${readOnlyAttrs} placeholder="e.g. Great improvement in conversational fluency, strong vocabulary retention...">${esc(strengths)}</textarea>
         </div>
         <div class="eop-field">
           <label>3 Focus Areas for Improvement</label>
-          <textarea id="eop-focus-${programIdx}" placeholder="1. Subjunctive mood&#10;2. Pronunciation of R&#10;3. Expanding vocabulary">${esc(focusAreas)}</textarea>
+          <textarea id="eop-focus-${programIdx}" ${readOnlyAttrs} placeholder="1. Subjunctive mood&#10;2. Pronunciation of R&#10;3. Expanding vocabulary">${esc(focusAreas)}</textarea>
         </div>
       </div>
-      <div style="text-align:right;margin-top:10px">
+      ${canManage ? `<div style="text-align:right;margin-top:10px">
         <button id="eop-save-btn-${programIdx}" class="btn btn-primary btn-sm" onclick="saveEOP('${s.id}',${programIdx})">Save Summary</button>
-      </div>
+      </div>` : ''}
     </div>
   </div>`;
 }
 
-function buildAllProgramsLog(s) {
-  const canManageStudent = isAdminUser();
+function buildAllProgramsLog(s, options = {}) {
+  const canManageStudent = options.canManageStudent !== false;
+  const visibleWindows = Array.isArray(options.visibleWindows) && options.visibleWindows.length ? options.visibleWindows : null;
+  const readOnly = options.readOnly === true;
   const programs = [
     { startDate: s.programStartDate, programStartDate: s.programStartDate, programStartPending: s.programStartPending === true, sessions: s.sessions || [], pauses: s.pauses || [], extraDays: s.extraDays || 0, coachHistory: s.coachHistory || [], programType: s.programType, programIdx: 0 },
     ...(s.renewals || []).map((r, i) => ({ startDate: r.startDate, programStartDate: r.startDate, programStartPending: r.startDatePending === true, sessions: r.sessions || [], pauses: r.pauses || [], extraDays: r.extraDays || 0, coachHistory: s.coachHistory || [], programType: r.programType || s.programType, programIdx: i + 1 }))
@@ -5219,6 +5423,8 @@ function buildAllProgramsLog(s) {
   let html = '';
   programs.forEach((prog, i) => {
     const progObj = { ...s, ...prog };
+    if (visibleWindows && progObj.programStartDate && !doesProgramOverlapCoachWindows(progObj, visibleWindows)) return;
+    if (visibleWindows && !progObj.programStartDate) return;
     const programNum = getDisplayedProgramNumber(s, i);
     const progCarryOver = getProgramCarryOver(s, prog.programIdx);
     const progTotalCheck = Logic.totalSessions(progObj);
@@ -5228,7 +5434,7 @@ function buildAllProgramsLog(s) {
     const isCollapsed = isCompleted && !!collapsedPrograms[collapseKey];
 
     if (totalPrograms > 1 || getProgramNumberBase(s) > 1) {
-      const editDateBtn = canEditProgramStartDate(s, prog.programIdx) && (prog.programIdx > 0 || getProgramNumberBase(s) > 1)
+      const editDateBtn = !readOnly && canEditProgramStartDate(s, prog.programIdx) && (prog.programIdx > 0 || getProgramNumberBase(s) > 1)
         ? `<button onclick="changeProgramStartDate('${s.id}',${prog.programIdx})" title="Edit start date" style="background:none;border:1px solid #4B5563;color:#9CA3AF;font-size:11px;padding:2px 8px;border-radius:6px;cursor:pointer;margin-left:6px">Edit Date</button>`
         : '';
       const editTypeBtn = canManageStudent && prog.programIdx > 0
@@ -5272,25 +5478,31 @@ function buildAllProgramsLog(s) {
     }
     if (!isCollapsed) {
       if (!progObj.programStartDate) {
-        html += buildPendingProgramStartLog(s, prog.programIdx);
+        html += buildPendingProgramStartLog(s, prog.programIdx, canManageStudent && !readOnly);
       } else {
         const overflowInfo = overflowInfoByProgram[i];
-        html += buildDaySessionLog(progObj, prog.programIdx, totalPrograms, overflowInfo.overflowMap, combinedPauses);
-        if (i === totalPrograms - 1 && overflowInfo.carryOut > 0) {
+        html += buildDaySessionLog(progObj, prog.programIdx, totalPrograms, overflowInfo.overflowMap, combinedPauses, {
+          canManageStudent: canManageStudent && !readOnly,
+          visibleWindows
+        });
+        if (!readOnly && i === totalPrograms - 1 && overflowInfo.carryOut > 0) {
           html += `<div style="background:#FFF7ED;border-top:2px solid #FED7AA;padding:14px 20px">
             <div style="font-size:13px;font-weight:800;color:#92400E;margin-bottom:6px">Sessions pending carry-over <span style="font-weight:400;color:#B45309;font-size:12px">(exceeded ${Logic.totalSessions(progObj)}-session cap - will apply when program is renewed)</span></div>
             ${renderCarryOverRows(overflowInfo)}
             <div style="margin-top:10px;font-size:13px;font-weight:700;color:#92400E">Total pending: <span style="color:#B45309">${formatSessionAmount(overflowInfo.carryOut)} session${overflowInfo.carryOut !== 1 ? 's' : ''}</span></div>
           </div>`;
         }
-        html += buildEOPBlock(s, prog.programIdx);
+        if (!readOnly) html += buildEOPBlock(s, prog.programIdx, canManageStudent);
       }
     }
   });
+  if (!html && visibleWindows) {
+    return `<div style="padding:16px 20px;font-size:13px;color:var(--gray-500)">No calendar entries fall within your coaching period for this student.</div>`;
+  }
   return html;
 }
 
-function buildPendingProgramStartLog(s, programIdx = 0) {
+function buildPendingProgramStartLog(s, programIdx = 0, canManageStudent = true) {
   return `<table style="width:100%;border-collapse:collapse"><colgroup><col style="width:80px"><col style="width:240px"><col></colgroup>
     <tr style="border-top:2px solid #FCA5A5;border-bottom:1px solid #FECACA;background:#FEF2F2">
       <td style="padding:10px 16px;font-weight:800;color:#B91C1C;text-align:right;white-space:nowrap;font-size:14px;vertical-align:middle;border-right:1px solid #FECACA">Day 1</td>
@@ -5299,7 +5511,7 @@ function buildPendingProgramStartLog(s, programIdx = 0) {
       </td>
       <td style="padding:10px 14px;vertical-align:middle">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-xs" style="background:#B45309;color:white;font-weight:700" onclick="openPendingDayOneSession('${s.id}',${programIdx})">+ Log Session</button>
+          ${canManageStudent ? `<button class="btn btn-xs" style="background:#B45309;color:white;font-weight:700" onclick="openPendingDayOneSession('${s.id}',${programIdx})">+ Log Session</button>` : '<span style="font-size:12px;color:#B91C1C">Read only</span>'}
         </div>
       </td>
     </tr>
@@ -5307,13 +5519,17 @@ function buildPendingProgramStartLog(s, programIdx = 0) {
 }
 
 function openPendingDayOneSession(studentId, programIdx = 0) {
+  const s = DB.get(studentId);
+  if (!s || !canCurrentUserManageStudent(s)) return;
   openSessionForm(studentId, 1, 1, null, null, programIdx);
 }
 
-function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = {}, allPauses = null) {
+function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = {}, allPauses = null, options = {}) {
   if (!s.programStartDate) {
     return `<p style="font-size:13px;color:var(--gray-500);padding:16px 20px">${isProgramStartPending(s) ? 'Program start date is pending.' : 'Set a program start date to see the session log.'}</p>`;
   }
+  const canManageStudent = options.canManageStudent !== false;
+  const visibleWindows = Array.isArray(options.visibleWindows) && options.visibleWindows.length ? options.visibleWindows : null;
   // Parse start date as components to avoid DST issues with midnight arithmetic
   const [_sy, _sm, _sd] = s.programStartDate.split('-').map(Number);
   // Helper: get the Date object for day N (1-based) of the program â€” DST-safe
@@ -5333,6 +5549,7 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
     .filter(x => x.date && (x.status === 'completed' || x.status === 'noshow'))
     .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   let rows = '';
+  let lastRenderedDayNum = 0;
 
   // Withdrawal: if student withdrew during this program's range, note it
   const withdrawDate = (s.withdrawn && s.withdrawalDate) ? s.withdrawalDate : null;
@@ -5342,6 +5559,8 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
     const date = dayDate(dayNum);
     const dateISO = localDateStr(date);
     const dateStr = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const isVisibleDay = !visibleWindows || isDateWithinCoachWindows(dateISO, visibleWindows);
+    if (!isVisibleDay) continue;
 
     // Insert withdrawal banner at the first day on/after the withdrawal date (within this program)
     if (withdrawDate && !withdrawnInserted && dateISO >= withdrawDate) {
@@ -5359,6 +5578,7 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
         </td>
       </tr>`;
       withdrawnInserted = true;
+      lastRenderedDayNum = dayNum;
       break;
     }
 
@@ -5374,7 +5594,7 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
       let lastPausedDay = dayNum;
       for (let d = dayNum + 1; d <= totalDays; d++) {
         const dISO = localDateStr(dayDate(d));
-        if (pauseContainsDate(pause, dISO)) lastPausedDay = d;
+        if (pauseContainsDate(pause, dISO) && (!visibleWindows || isDateWithinCoachWindows(dISO, visibleWindows))) lastPausedDay = d;
         else break;
       }
       const lastDate = dayDate(lastPausedDay);
@@ -5390,6 +5610,7 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
           </div>
         </td>
       </tr>`;
+      lastRenderedDayNum = lastPausedDay;
       dayNum = lastPausedDay;
       continue;
     }
@@ -5423,7 +5644,7 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
     const sessionCards = hasSession
       ? `<div style="display:flex;flex-direction:column;gap:8px">${daySessions.map(sess => {
           const globalNum = globalSessionOrder.findIndex(x => x.id === sess.id) + 1;
-          const card = buildSlot(s.id, sess.week, sess.slot, sess, phase, globalNum, false, s, true, programIdx);
+          const card = buildSlot(s.id, sess.week, sess.slot, sess, phase, globalNum, false, s, true, programIdx, canManageStudent);
           const ov = overflowMap[sess.id];
           const overflowNote = ov
             ? `<div style="margin-top:4px;padding:5px 10px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:6px;font-size:12px;font-weight:600;color:#92400E">Warning: ${ov.overflowAmt} session${ov.overflowAmt!==1?'s':''} from this entry counted on the next program${ov.p1Amt > 0 ? ` (${ov.p1Amt} counted here)` : ''}</div>`
@@ -5432,10 +5653,10 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
         }).join('')}</div>`
       : '';
 
-    const logBtn = (isPast || isToday) && !hasSession
+    const logBtn = canManageStudent && (isPast || isToday) && !hasSession
       ? `<button class="btn btn-xs" style="background:#F59E0B;color:white;font-weight:600;font-size:11px;white-space:nowrap" onclick="openSessionForm('${s.id}',${weekNum},${(s.sessions||[]).filter(x=>x.week===weekNum).length+1},null,'${dateISO}',${programIdx})">+ Log Session</button>`
       : '';
-    const deleteExtraBtn = isExtra
+    const deleteExtraBtn = canManageStudent && isExtra
       ? `<button class="btn btn-xs" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;font-size:10px;white-space:nowrap" onclick="deleteExtraDay('${s.id}',${dayNum},${programIdx})" title="Remove Day ${dayNum} and all days after">Remove</button>`
       : '';
 
@@ -5468,6 +5689,11 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
         </div>
       </td>
     </tr>`;
+    lastRenderedDayNum = dayNum;
+  }
+
+  if (!rows) {
+    return `<p style="font-size:13px;color:var(--gray-500);padding:16px 20px">No calendar entries fall within this coaching period.</p>`;
   }
 
   // "End of Program" row at Day 90 boundary (before extra days)
@@ -5478,11 +5704,14 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
     </td>
   </tr></table>`;
 
-  const extendBar = `<div style="padding:12px 20px;border-top:2px solid #E5E7EB;display:flex;align-items:center;gap:10px;background:#F9FAFB;flex-wrap:wrap">
-    <span style="font-size:13px;color:var(--gray-500)">Day ${totalDays} - end of calendar</span>
-    <button class="btn btn-secondary btn-sm" onclick="promptExtendCalendar('${s.id}',${programIdx})">+ Add More Dates</button>
-  </div>`;
-  return `<table style="width:100%;border-collapse:collapse"><colgroup><col style="width:80px"><col style="width:240px"><col></colgroup>${rows}</table>${endOfProgramRow}${withdrawnInserted ? '' : extendBar}`;
+  const shouldShowProgramEnd = !visibleWindows || lastRenderedDayNum >= totalDays;
+  const extendBar = canManageStudent
+    ? `<div style="padding:12px 20px;border-top:2px solid #E5E7EB;display:flex;align-items:center;gap:10px;background:#F9FAFB;flex-wrap:wrap">
+        <span style="font-size:13px;color:var(--gray-500)">Day ${totalDays} - end of calendar</span>
+        <button class="btn btn-secondary btn-sm" onclick="promptExtendCalendar('${s.id}',${programIdx})">+ Add More Dates</button>
+      </div>`
+    : '';
+  return `<table style="width:100%;border-collapse:collapse"><colgroup><col style="width:80px"><col style="width:240px"><col></colgroup>${rows}</table>${shouldShowProgramEnd ? endOfProgramRow : ''}${withdrawnInserted || !shouldShowProgramEnd ? '' : extendBar}`;
 }
 
 function buildCalendarTable(s) {
@@ -5577,7 +5806,7 @@ function buildWeekRow(s, w, programIdx = null) {
     </div>`;
 }
 
-function buildSlot(studentId, week, slot, sess, phase, slotNum, isExtra, studentObj = null, hideDateChip = false, programIdx = null) {
+function buildSlot(studentId, week, slot, sess, phase, slotNum, isExtra, studentObj = null, hideDateChip = false, programIdx = null, allowActions = true) {
   const label = isExtra ? 'Extra Session' : slotNum > 0 ? `Session ${slotNum}` : '';
   const isPast = phase === 'past';
 
@@ -5642,10 +5871,10 @@ function buildSlot(studentId, week, slot, sess, phase, slotNum, isExtra, student
         </div>
         ${missedMeta}${notesHTML}
       </div>
-      <div class="slot-actions">
+      ${allowActions ? `<div class="slot-actions">
         <button class="btn btn-xs" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;font-weight:600" onclick="openSessionForm('${studentId}',${week},${slot},'${sess.id}',null,${programIdx !== null ? programIdx : 'null'})">Edit</button>
         <button class="btn btn-xs" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;font-weight:600" onclick="askDeleteSession('${studentId}','${sess.id}',${programIdx !== null ? programIdx : 'null'})">Delete</button>
-      </div>
+      </div>` : ''}
     </div>`;
 }
 
@@ -5665,6 +5894,7 @@ function toggleWeek(w) {
 function toggleCheck(studentId, key, val) {
   const s = DB.get(studentId);
   if (!s) return;
+  if (!canCurrentUserManageStudent(s)) return;
   s.checklist[key] = val;
   DB.upsert(s);
   renderStudent(studentId);
@@ -5825,9 +6055,11 @@ document.getElementById('btn-save-student').addEventListener('click', () => {
 
 // â”€â”€â”€ SESSION FORM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openSessionForm(studentId, week, slot, editId = null, defaultDate = null, programIdx = null) {
+  const s0 = DB.get(studentId);
+  if (!s0) return;
+  if (!canCurrentUserManageStudent(s0)) return;
   if (programIdx === null) programIdx = getActiveProgramIdx(studentId);
   sessionCtx = { studentId, week, slot, editId, programIdx };
-  const s0 = DB.get(studentId);
   const spw0 = s0 ? Logic.spw(s0) : 1;
   const sessionLabel = slot > spw0 ? 'Extra Session' : `Session ${slot}`;
   document.getElementById('session-modal-title').textContent = editId
@@ -5954,6 +6186,7 @@ document.getElementById('btn-save-session').addEventListener('click', () => {
 
   const sRaw = DB.get(studentId);
   if (!sRaw) return;
+  if (!canCurrentUserManageStudent(sRaw)) return;
   if (!editId && date) {
     const pendingProgram = programIdx === 0
       ? { startDate: sRaw.programStartDate || '', startDatePending: sRaw.programStartPending === true }
@@ -6040,6 +6273,7 @@ document.getElementById('btn-save-session').addEventListener('click', () => {
 function extendCalendar(studentId, days, reset = false, programIdx = null) {
   const s = DB.get(studentId);
   if (!s) return;
+  if (!canCurrentUserManageStudent(s)) return;
   const idx = programIdx !== null ? programIdx : getActiveProgramIdx(studentId);
   if (idx === 0) {
     if (reset) s.extraDays = 0;
@@ -6056,6 +6290,7 @@ function extendCalendar(studentId, days, reset = false, programIdx = null) {
 function deleteExtraDay(studentId, dayNum, programIdx = null) {
   const s = DB.get(studentId);
   if (!s) return;
+  if (!canCurrentUserManageStudent(s)) return;
   const idx = programIdx !== null ? programIdx : getActiveProgramIdx(studentId);
   const prog = idx === 0 ? s : { ...s, sessions: (s.renewals||[])[idx-1]?.sessions||[], pauses: (s.renewals||[])[idx-1]?.pauses||[], extraDays: (s.renewals||[])[idx-1]?.extraDays||0, programStartDate: (s.renewals||[])[idx-1]?.startDate };
   if (!prog.programStartDate) return;
@@ -6075,6 +6310,8 @@ function deleteExtraDay(studentId, dayNum, programIdx = null) {
 }
 
 function promptExtendCalendar(studentId, programIdx = 0) {
+  const s = DB.get(studentId);
+  if (!s || !canCurrentUserManageStudent(s)) return;
   const input = prompt('How many days would you like to add to the calendar?');
   if (input === null) return;
   const days = parseInt(input);
@@ -6196,7 +6433,7 @@ document.getElementById('btn-delete-coach-entry').addEventListener('click', () =
 });
 
 // â”€â”€â”€ PROGRAM PAUSES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function buildStudentPauseList(s) {
+function buildStudentPauseList(s, canManage = true) {
   const allPauses = [
     ...(s.pauses || []),
     ...(s.renewals || []).flatMap(r => r.pauses || [])
@@ -6222,10 +6459,10 @@ function buildStudentPauseList(s) {
         <div style="font-size:13px;font-weight:600;color:#92400E">${dateText} <span style="font-weight:400;color:#B45309">(${durationText})</span></div>
         ${p.reason ? `<div style="font-size:12px;color:#B45309;margin-top:2px">${esc(p.reason)}</div>` : ''}
       </div>
-      <div style="display:flex;gap:6px;flex-shrink:0">
+      ${canManage ? `<div style="display:flex;gap:6px;flex-shrink:0">
         <button class="btn btn-xs" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE" onclick="openPauseForm('${s.id}','${p.id}')">Edit</button>
         <button class="btn btn-xs" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA" onclick="deletePause('${s.id}','${p.id}')">Remove</button>
-      </div>
+      </div>` : ''}
     </div>`;
   }).join('');
 }
@@ -6267,6 +6504,8 @@ function syncPauseForm() {
 }
 
 function openPauseForm(studentId, editPauseId = null) {
+  const s = DB.get(studentId);
+  if (!s || !canCurrentUserManageStudent(s)) return;
   pauseCtx = { studentId, editPauseId };
   const err = document.getElementById('pause-form-error');
   err.style.display = 'none'; err.textContent = '';
@@ -6290,6 +6529,7 @@ function openPauseForm(studentId, editPauseId = null) {
 function deletePause(studentId, pauseId) {
   const s = DB.get(studentId);
   if (!s) return;
+  if (!canCurrentUserManageStudent(s)) return;
   // Always remove from top-level pauses AND any renewal pauses (covers legacy data)
   s.pauses = (s.pauses || []).filter(p => p.id !== pauseId);
   (s.renewals || []).forEach(r => { r.pauses = (r.pauses || []).filter(p => p.id !== pauseId); });
@@ -6310,6 +6550,7 @@ document.getElementById('btn-save-pause').addEventListener('click', () => {
   if (!reason)    { showErr('Please enter a reason for the pause.'); return; }
   const s = DB.get(pauseCtx.studentId);
   if (!s) return;
+  if (!canCurrentUserManageStudent(s)) return;
   const pauseData = { startDate, endDate: indefinite ? '' : endDate, indefinite, reason };
   // Always save pauses to top-level s.pauses â€” the calendar uses date-range matching
   // so each pause naturally appears in whichever program's calendar its dates fall in.
@@ -6390,6 +6631,8 @@ function askDeleteStudent(id) {
 }
 
 function askDeleteSession(studentId, sessionId, programIdx = null) {
+  const s = DB.get(studentId);
+  if (!s || !canCurrentUserManageStudent(s)) return;
   pendingDeleteId = sessionId;
   pendingDeleteType = 'session';
   pendingDeleteExtra = studentId;
@@ -6449,6 +6692,7 @@ document.getElementById('btn-confirm').addEventListener('click', () => {
 function saveEOP(studentId, programIdx) {
   const s = DB.get(studentId);
   if (!s) return;
+  if (!canCurrentUserManageStudent(s)) return;
   const eopData = {
     strengths: document.getElementById(`eop-strengths-${programIdx}`)?.value || '',
     focusAreas: document.getElementById(`eop-focus-${programIdx}`)?.value || ''
