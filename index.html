@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SLA Program Â· Coach Dashboard</title>
+<title>SLA Program - Coach Dashboard</title>
 <!-- Firebase SDK (compat) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -361,7 +361,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
       </div>
       <div>
         <label style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.5px">Password</label>
-        <input type="password" id="login-password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+        <input type="password" id="login-password" placeholder="********"
           style="width:100%;margin-top:5px;padding:10px 14px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box"
           onfocus="this.style.borderColor='#B91C1C'" onblur="this.style.borderColor='#D1D5DB'"
           onkeydown="if(event.key==='Enter')doLogin()">
@@ -417,7 +417,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
           <button id="btn-new-student" style="background:#DC2626;color:#fff;border:none;padding:10px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;transition:background .15s" onmouseover="this.style.background='#B91C1C'" onmouseout="this.style.background='#DC2626'">+ New Student</button>
         </div>
         <div style="margin-bottom:14px">
-          <input type="search" id="student-search" placeholder="ðŸ”  Search by student name or coachâ€¦"
+          <input type="search" id="student-search" placeholder="Search by student name or coach..."
             oninput="renderDashboard()"
             style="width:100%;padding:10px 16px;border:1.5px solid var(--gray-300);border-radius:10px;font-size:14px;font-family:inherit;box-sizing:border-box;outline:none;transition:border-color .15s"
             onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='var(--gray-300)'">
@@ -457,7 +457,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
   <div class="modal">
     <div class="modal-hdr">
       <span class="modal-title" id="student-modal-title">New Student</span>
-      <button class="modal-close" onclick="closeModal('modal-student')">âœ•</button>
+      <button class="modal-close" onclick="closeModal('modal-student')">&times;</button>
     </div>
     <div class="modal-body">
       <div class="form-grid">
@@ -470,24 +470,24 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
             <label>Program Type *</label>
             <select id="f-program">
               <optgroup label="Regular (1 session/week)">
-                <option value="regular-3m">Regular 3 months â€” 90 days, max 12 sessions</option>
-                <option value="regular-6m">Regular 6 months â€” 180 days, max 24 sessions</option>
-                <option value="regular-12m">Regular 12 months â€” 360 days, max 48 sessions</option>
+                <option value="regular-3m">Regular 3 months - 90 days, max 12 sessions</option>
+                <option value="regular-6m">Regular 6 months - 180 days, max 24 sessions</option>
+                <option value="regular-12m">Regular 12 months - 360 days, max 48 sessions</option>
               </optgroup>
               <optgroup label="2X (2 sessions/week)">
-                <option value="2x-3m">2X 3 months â€” 90 days, max 24 sessions</option>
-                <option value="2x-6m">2X 6 months â€” 180 days, max 48 sessions</option>
-                <option value="2x-12m">2X 12 months â€” 360 days, max 96 sessions</option>
+                <option value="2x-3m">2X 3 months - 90 days, max 24 sessions</option>
+                <option value="2x-6m">2X 6 months - 180 days, max 48 sessions</option>
+                <option value="2x-12m">2X 12 months - 360 days, max 96 sessions</option>
               </optgroup>
               <optgroup label="Lite Program">
-                <option value="lite-3m">Lite Program 3 months â€” 90 days, max 12 sessions</option>
+                <option value="lite-3m">Lite Program 3 months - 90 days, max 12 sessions</option>
               </optgroup>
             </select>
           </div>
           <div class="ff">
             <label>Speaking Level</label>
             <select id="f-level">
-              <option value="">Select levelâ€¦</option>
+              <option value="">Select...</option>
               <option>A1</option><option>A2</option><option>B1</option>
               <option>B2</option><option>C1</option><option>C2</option>
             </select>
@@ -497,7 +497,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
           <div class="ff">
             <label>Type of Spanish</label>
             <select id="f-spanish" onchange="onSpanishTypeChange()">
-              <option value="">Selectâ€¦</option>
+              <option value="">Select...</option>
               <option>Castilian</option>
               <option>Latam</option>
               <option>Mexican</option>
@@ -512,7 +512,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
           <div class="ff">
             <label>Program Number</label>
             <select id="f-program-num">
-              <option value="">Selectâ€¦</option>
+              <option value="">Select...</option>
               <option value="1">1st Program</option>
               <option value="2">2nd Program</option>
               <option value="3">3rd Program</option>
@@ -530,7 +530,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
           <div class="ff">
             <label>Coach Name</label>
             <select id="f-coach">
-              <option value="">Select coachâ€¦</option>
+              <option value="">Select...</option>
             </select>
           </div>
         </div>
@@ -545,7 +545,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
           </div>
           <div class="ff">
             <label>Study Plan Link</label>
-            <input type="url" id="f-plan" placeholder="https://docs.google.com/â€¦">
+            <input type="url" id="f-plan" placeholder="https://docs.google.com/...">
           </div>
         </div>
         <div class="ff">
@@ -570,7 +570,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
   <div class="modal">
     <div class="modal-hdr">
       <span class="modal-title" id="session-modal-title">Log Session</span>
-      <button class="modal-close" onclick="closeModal('modal-session')">âœ•</button>
+      <button class="modal-close" onclick="closeModal('modal-session')">&times;</button>
     </div>
     <div class="modal-body">
       <div id="session-form-error" style="display:none;margin-bottom:14px;padding:10px 14px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:13px;color:#B91C1C;font-weight:600"></div>
@@ -591,11 +591,11 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
           <div class="status-opts">
             <div class="status-opt" style="flex:1">
               <input type="radio" name="sstatus" id="ss-done" value="completed" checked>
-              <label for="ss-done" class="opt-c">âœ“ Completed</label>
+              <label for="ss-done" class="opt-c">Completed</label>
             </div>
             <div class="status-opt" style="flex:1">
               <input type="radio" name="sstatus" id="ss-missed" value="missed">
-              <label for="ss-missed" class="opt-m">âœ• Missed</label>
+              <label for="ss-missed" class="opt-m">Missed</label>
             </div>
           </div>
         </div>
@@ -609,7 +609,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
             </div>
             <div class="ff">
               <label>Session Notes *</label>
-              <textarea id="s-notes" rows="4" placeholder="Add your notes about this sessionâ€¦" oninput="this.classList.remove('field-error');clearFormError()"></textarea>
+              <textarea id="s-notes" rows="4" placeholder="Add your notes about this session..." oninput="this.classList.remove('field-error');clearFormError()"></textarea>
             </div>
           </div>
         </div>
@@ -621,11 +621,11 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
             <div class="status-opts">
               <div class="status-opt" style="flex:1">
                 <input type="radio" name="missed-by" id="mb-coach" value="coach" onchange="onMissedByChange()">
-                <label for="mb-coach" class="opt-by">ðŸ§‘â€ðŸ« Coach</label>
+                <label for="mb-coach" class="opt-by">Coach</label>
               </div>
               <div class="status-opt" style="flex:1">
                 <input type="radio" name="missed-by" id="mb-student" value="student" onchange="onMissedByChange()">
-                <label for="mb-student" class="opt-by">ðŸŽ“ Student</label>
+                <label for="mb-student" class="opt-by">Student</label>
               </div>
             </div>
           </div>
@@ -637,18 +637,18 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
               <div class="status-opts">
                 <div class="status-opt" style="flex:1">
                   <input type="radio" name="s-notice" id="n-yes" value="yes" onchange="onNoticeChange()">
-                  <label for="n-yes" class="opt-by">âœ… Yes, notified</label>
+                  <label for="n-yes" class="opt-by">Yes, notified</label>
                 </div>
                 <div class="status-opt" style="flex:1">
                   <input type="radio" name="s-notice" id="n-no" value="no" onchange="onNoticeChange()">
-                  <label for="n-no" class="opt-by">âŒ No notice</label>
+                  <label for="n-no" class="opt-by">No notice</label>
                 </div>
               </div>
             </div>
             <div id="notice-outcome" style="display:none;padding:12px 14px;border-radius:8px;font-size:13px;margin-bottom:12px"></div>
             <div class="ff" style="margin-bottom:12px">
               <label id="student-miss-notes-label">Notes on why the student missed *</label>
-              <textarea id="s-student-miss-notes" rows="3" placeholder="e.g. Had a family emergency, forgot about the sessionâ€¦" oninput="this.classList.remove('field-error');clearFormError()"></textarea>
+              <textarea id="s-student-miss-notes" rows="3" placeholder="e.g. Had a family emergency, forgot about the session..." oninput="this.classList.remove('field-error');clearFormError()"></textarea>
             </div>
           </div>
 
@@ -674,7 +674,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
   <div class="modal" style="max-width:420px">
     <div class="modal-hdr">
       <span class="modal-title">Change Coach</span>
-      <button class="modal-close" onclick="closeModal('modal-change-coach')">âœ•</button>
+      <button class="modal-close" onclick="closeModal('modal-change-coach')">&times;</button>
     </div>
     <div class="modal-body">
       <div id="cc-error" style="display:none;margin-bottom:14px;padding:10px 14px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:13px;color:#B91C1C;font-weight:600"></div>
@@ -701,7 +701,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
   <div class="modal" style="max-width:420px">
     <div class="modal-hdr">
       <span class="modal-title">Edit Coach Entry</span>
-      <button class="modal-close" onclick="closeModal('modal-edit-coach-entry')">âœ•</button>
+      <button class="modal-close" onclick="closeModal('modal-edit-coach-entry')">&times;</button>
     </div>
     <div class="modal-body">
       <div id="ece-error" style="display:none;margin-bottom:14px;padding:10px 14px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:13px;color:#B91C1C;font-weight:600"></div>
@@ -729,7 +729,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
   <div class="modal" style="max-width:380px">
     <div class="modal-hdr">
       <span class="modal-title" id="prog-start-date-title">Change Program Start Date</span>
-      <button class="modal-close" onclick="closeModal('modal-prog-start-date')">âœ•</button>
+      <button class="modal-close" onclick="closeModal('modal-prog-start-date')">&times;</button>
     </div>
     <div class="modal-body">
       <div class="ff">
@@ -753,7 +753,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
   <div class="modal">
     <div class="modal-hdr">
       <span class="modal-title">Add Program Pause</span>
-      <button class="modal-close" onclick="closeModal('modal-pause')">âœ•</button>
+      <button class="modal-close" onclick="closeModal('modal-pause')">&times;</button>
     </div>
     <div class="modal-body">
       <div id="pause-form-error" style="display:none;margin-bottom:14px;padding:10px 14px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:13px;color:#B91C1C;font-weight:600"></div>
@@ -770,7 +770,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
             </label>
           </div>
         </div>
-        <div class="ff"><label>Reason *</label><input type="text" id="p-reason" placeholder="e.g. Student traveling, medical leave, holidaysâ€¦"></div>
+        <div class="ff"><label>Reason *</label><input type="text" id="p-reason" placeholder="e.g. Student traveling, medical leave, holidays..."></div>
       </div>
     </div>
     <div class="modal-ftr">
@@ -785,24 +785,24 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
   <div class="modal" style="max-width:380px">
     <div class="modal-hdr">
       <span class="modal-title" id="change-type-title">Change Program Type</span>
-      <button class="modal-close" onclick="closeModal('modal-change-type')">âœ•</button>
+      <button class="modal-close" onclick="closeModal('modal-change-type')">&times;</button>
     </div>
     <div class="modal-body">
       <div class="ff">
         <label>Program Type *</label>
         <select id="change-type-select">
           <optgroup label="Regular (1 session/week)">
-            <option value="regular-3m">Regular 3 months â€” 90 days, max 12 sessions</option>
-            <option value="regular-6m">Regular 6 months â€” 180 days, max 24 sessions</option>
-            <option value="regular-12m">Regular 12 months â€” 360 days, max 48 sessions</option>
+            <option value="regular-3m">Regular 3 months - 90 days, max 12 sessions</option>
+            <option value="regular-6m">Regular 6 months - 180 days, max 24 sessions</option>
+            <option value="regular-12m">Regular 12 months - 360 days, max 48 sessions</option>
           </optgroup>
           <optgroup label="2X (2 sessions/week)">
-            <option value="2x-3m">2X 3 months â€” 90 days, max 24 sessions</option>
-            <option value="2x-6m">2X 6 months â€” 180 days, max 48 sessions</option>
-            <option value="2x-12m">2X 12 months â€” 360 days, max 96 sessions</option>
+            <option value="2x-3m">2X 3 months - 90 days, max 24 sessions</option>
+            <option value="2x-6m">2X 6 months - 180 days, max 48 sessions</option>
+            <option value="2x-12m">2X 12 months - 360 days, max 96 sessions</option>
           </optgroup>
           <optgroup label="Lite Program">
-            <option value="lite-3m">Lite Program 3 months â€” 90 days, max 12 sessions</option>
+            <option value="lite-3m">Lite Program 3 months - 90 days, max 12 sessions</option>
           </optgroup>
         </select>
       </div>
@@ -819,24 +819,24 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
   <div class="modal" style="max-width:420px">
     <div class="modal-hdr">
       <span class="modal-title" id="renew-modal-title">Start New Program</span>
-      <button class="modal-close" onclick="closeModal('modal-renew')">âœ•</button>
+      <button class="modal-close" onclick="closeModal('modal-renew')">&times;</button>
     </div>
     <div class="modal-body">
       <div class="ff" style="margin-bottom:14px">
         <label>Program Type *</label>
         <select id="renew-program-type">
           <optgroup label="Regular (1 session/week)">
-            <option value="regular-3m">Regular 3 months â€” 90 days, max 12 sessions</option>
-            <option value="regular-6m">Regular 6 months â€” 180 days, max 24 sessions</option>
-            <option value="regular-12m">Regular 12 months â€” 360 days, max 48 sessions</option>
+            <option value="regular-3m">Regular 3 months - 90 days, max 12 sessions</option>
+            <option value="regular-6m">Regular 6 months - 180 days, max 24 sessions</option>
+            <option value="regular-12m">Regular 12 months - 360 days, max 48 sessions</option>
           </optgroup>
           <optgroup label="2X (2 sessions/week)">
-            <option value="2x-3m">2X 3 months â€” 90 days, max 24 sessions</option>
-            <option value="2x-6m">2X 6 months â€” 180 days, max 48 sessions</option>
-            <option value="2x-12m">2X 12 months â€” 360 days, max 96 sessions</option>
+            <option value="2x-3m">2X 3 months - 90 days, max 24 sessions</option>
+            <option value="2x-6m">2X 6 months - 180 days, max 48 sessions</option>
+            <option value="2x-12m">2X 12 months - 360 days, max 96 sessions</option>
           </optgroup>
           <optgroup label="Lite Program">
-            <option value="lite-3m">Lite Program 3 months â€” 90 days, max 12 sessions</option>
+            <option value="lite-3m">Lite Program 3 months - 90 days, max 12 sessions</option>
           </optgroup>
         </select>
       </div>
@@ -862,7 +862,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
   <div class="modal" style="max-width:420px">
     <div class="modal-hdr">
       <span class="modal-title" id="coach-login-modal-title">Create Coach Login</span>
-      <button class="modal-close" onclick="closeModal('modal-coach-login')">âœ•</button>
+      <button class="modal-close" onclick="closeModal('modal-coach-login')">&times;</button>
     </div>
     <div class="modal-body">
       <p style="font-size:13px;color:var(--gray-600);margin-bottom:16px">Create a login account for this coach. They will use this email and password to sign in and see only their assigned students.</p>
@@ -892,7 +892,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
   <div class="modal" style="max-width:420px">
     <div class="modal-hdr">
       <span class="modal-title">Withdraw Student</span>
-      <button class="modal-close" onclick="closeModal('modal-withdraw')">âœ•</button>
+      <button class="modal-close" onclick="closeModal('modal-withdraw')">&times;</button>
     </div>
     <div class="modal-body">
       <p style="font-size:13px;color:var(--gray-600);margin-bottom:16px">Mark this student as withdrawn from the program. Their session history will be preserved.</p>
@@ -902,7 +902,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
       </div>
       <div class="ff">
         <label>Reason <span style="font-weight:400;color:var(--gray-400)">(optional)</span></label>
-        <textarea id="withdraw-reason" rows="3" placeholder="e.g. Personal reasons, schedule conflictâ€¦" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;outline:none" onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='var(--gray-300)'"></textarea>
+        <textarea id="withdraw-reason" rows="3" placeholder="e.g. Personal reasons, schedule conflict..." style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;outline:none" onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='var(--gray-300)'"></textarea>
       </div>
     </div>
     <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:16px 20px;border-top:1px solid var(--gray-200)">
@@ -940,7 +940,7 @@ function isProgramStartPending(program) {
   return !!program && (program.programStartPending === true || program.startDatePending === true);
 }
 
-function formatProgramStart(program, fallback = 'â€”') {
+function formatProgramStart(program, fallback = '-') {
   if (isProgramStartPending(program) || !program?.programStartDate) return '<span class="pending-start-badge">Pending</span>';
   return fmtDate(program.programStartDate);
 }
@@ -1038,14 +1038,14 @@ function esc(s) {
 }
 
 const fmtDate = iso => {
-  if (!iso) return 'â€”';
+  if (!iso) return '-';
   const d = new Date(iso + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 const fmtShort = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 const fmtShortNoYear = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 const fmtShortYear = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-const fmtDateRange = (a, b) => `${fmtShortNoYear(a)} â€“ ${fmtShortYear(b)}`;
+const fmtDateRange = (a, b) => `${fmtShortNoYear(a)} - ${fmtShortYear(b)}`;
 const localDateStr = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
 const monthLabel = ym => {
@@ -1285,7 +1285,7 @@ function doLogin() {
   const errEl    = document.getElementById('login-error');
   const btn      = document.getElementById('login-btn');
   errEl.style.display = 'none';
-  btn.textContent = 'Signing inâ€¦';
+  btn.textContent = 'Signing in...';
   btn.disabled = true;
   auth.signInWithEmailAndPassword(email, password).catch(err => {
     errEl.textContent = err.code + ': ' + err.message;
@@ -1337,7 +1337,7 @@ auth.onAuthStateChanged(async user => {
   appHeader.style.display   = '';
   appBody.style.display     = '';
   document.getElementById('header-user').textContent =
-    _userRole === 'coach' ? `ðŸ‘¤ ${_coachName || user.email}` : `ðŸ‘¥ ${user.email}`;
+    _userRole === 'coach' ? `Coach: ${_coachName || user.email}` : `Team: ${user.email}`;
 
   startSync();
 });
@@ -1386,7 +1386,7 @@ async function saveCoachLogin() {
   if (!password) { errEl.textContent = 'Please enter a password.'; errEl.style.display = 'block'; return; }
   if (password.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
 
-  btn.textContent = existingRealUser ? 'Updatingâ€¦' : 'Savingâ€¦';
+  btn.textContent = existingRealUser ? 'Updating...' : 'Saving...';
   btn.disabled = true;
 
   try {
@@ -1414,7 +1414,7 @@ async function saveCoachLogin() {
         throw e;
       }
       closeModal('modal-coach-login');
-      alert(`âœ“ Password updated for ${_coachLoginCtx}.`);
+      alert(`Password updated for ${_coachLoginCtx}.`);
     } else {
       // Create new account
       if (!email) { errEl.textContent = 'Email is required.'; errEl.style.display = 'block'; btn.textContent = 'Create Account'; btn.disabled = false; return; }
@@ -1424,13 +1424,19 @@ async function saveCoachLogin() {
         await fsdb.collection('users').doc(coachLoginLinkDocId(email)).delete().catch(() => {});
         await secondaryAuth.signOut();
         closeModal('modal-coach-login');
-        alert(`âœ“ Login created for ${_coachLoginCtx}.\n\nEmail: ${email}\nThey can sign in at this same URL.`);
+        alert(`Login created for ${_coachLoginCtx}.
+
+Email: ${email}
+They can sign in at this same URL.`);
       } catch (e) {
         if (e.code === 'auth/email-already-in-use') {
           await saveCoachLoginLink(email, _coachLoginCtx);
           closeModal('modal-coach-login');
           renderCoachView();
-          alert(`âœ“ Existing login linked for ${_coachLoginCtx}.\n\nEmail: ${email}\nThe existing Firebase password stays the same. Ask the coach to sign out and sign in again.`);
+          alert(`Existing login linked for ${_coachLoginCtx}.
+
+Email: ${email}
+The existing Firebase password stays the same. Ask the coach to sign out and sign in again.`);
           return;
         }
         throw e;
@@ -2026,7 +2032,7 @@ function buildCoachStatsSection(students) {
     const months = coachMonthMap[coach] || {};
     const total = Math.round(Object.values(months).reduce((sum, v) => sum + v, 0) * 10) / 10;
     const cells = allMonths.map(m =>
-      `<td style="text-align:center;padding:6px 12px;font-size:13px;color:${months[m] ? 'var(--gray-800)' : 'var(--gray-300)'}">${months[m] || 'â€”'}</td>`
+      `<td style="text-align:center;padding:6px 12px;font-size:13px;color:${months[m] ? 'var(--gray-800)' : 'var(--gray-300)'}">${months[m] || '-'}</td>`
     ).join('');
     return `<tr style="border-bottom:1px solid var(--gray-100)">
       <td style="padding:6px 12px;font-size:13px;font-weight:700;color:var(--gray-700)">${esc(coach)}</td>
@@ -2292,11 +2298,11 @@ function renderAttendanceView() {
             reschedule: ['#FEF3C7', '#92400E', '#FCD34D'],
             missed: ['#FEE2E2', '#991B1B', '#FECACA']
           }[entry.category];
-          return `<span title="${esc(entry.coach || '')}" style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;background:${colors[0]};color:${colors[1]};border:1px solid ${colors[2]};font-size:11px;font-weight:700;white-space:nowrap">${fmtDate(entry.date)} Â· ${esc(entry.label)}</span>`;
+          return `<span title="${esc(entry.coach || '')}" style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;background:${colors[0]};color:${colors[1]};border:1px solid ${colors[2]};font-size:11px;font-weight:700;white-space:nowrap">${fmtDate(entry.date)} - ${esc(entry.label)}</span>`;
         }).join('');
       return `<tr style="border-bottom:1px solid var(--gray-200)">
         <td style="padding:12px 14px;font-weight:700;color:var(--gray-800)"><button onclick="goStudent('${row.id}')" style="background:none;border:none;color:var(--gray-800);font:inherit;font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:2px;padding:0">${esc(row.name)}</button></td>
-        <td style="padding:12px 14px;color:var(--gray-600);font-size:13px">${esc(row.coach || 'â€”')}</td>
+        <td style="padding:12px 14px;color:var(--gray-600);font-size:13px">${esc(row.coach || '-')}</td>
         <td style="padding:12px 14px;text-align:center;font-weight:800;color:#14532D">${row.attended}</td>
         <td style="padding:12px 14px;text-align:center;font-weight:800;color:#92400E">${row.reschedule}</td>
         <td style="padding:12px 14px;text-align:center;font-weight:800;color:#991B1B">${row.missed}</td>
@@ -2356,7 +2362,7 @@ function renderAttendanceView() {
           </tr>
         </thead>
         <tbody>${studentRows}</tbody>
-      </table>` : `<div class="empty-state"><div class="ei">âœ“</div><h3>No attendance records</h3><p>No sessions match the selected date range.</p></div>`}
+      </table>` : `<div class="empty-state"><div class="ei">&bull;</div><h3>No attendance records</h3><p>No sessions match the selected date range.</p></div>`}
     </div>`;
 }
 
@@ -3656,7 +3662,7 @@ function renderCoachView() {
   const currentMonthKey = localDateStr(new Date()).slice(0, 7);
   const hasDateFilter = !!(coachDateFrom || coachDateTo);
   const filterLabel = hasDateFilter
-    ? `${coachDateFrom || 'Start'} â†’ ${coachDateTo || 'End'}`
+    ? `${coachDateFrom || 'Start'} -> ${coachDateTo || 'End'}`
     : 'All Time';
   const isWithinCoachRange = dateStr => {
     if (!hasDateFilter) return true;
@@ -3718,13 +3724,13 @@ function renderCoachView() {
   // Date filter state is derived near the top of renderCoachView.
   // filterLabel is already computed above.
   /*
-    ? `${coachDateFrom || 'â€¦'} â†’ ${coachDateTo || 'â€¦'}`
+    ? `${coachDateFrom || '...'} -> ${coachDateTo || '...'}`
     : 'All Time';
 
   */
   const toolbar = `
     <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
-      <input type="search" id="coach-search" placeholder="ðŸ”  Search coachesâ€¦"
+      <input type="search" id="coach-search" placeholder="Search coaches..."
         value="${esc(coachSearchTerm)}"
         oninput="coachSearchTerm=this.value;const _cp=this.selectionStart;renderCoachView();const _el=document.getElementById('coach-search');if(_el){_el.focus();_el.setSelectionRange(_cp,_cp);}"
         style="flex:1;min-width:180px;padding:10px 16px;border:1.5px solid var(--gray-300);border-radius:10px;font-size:14px;font-family:inherit;box-sizing:border-box;outline:none;transition:border-color .15s"
@@ -3734,12 +3740,12 @@ function renderCoachView() {
         <input type="date" id="coach-date-from" value="${coachDateFrom}"
           onchange="coachDateFrom=this.value;renderCoachView()"
           style="border:none;outline:none;font-size:13px;font-family:inherit;color:var(--gray-700);cursor:pointer;background:transparent">
-        <span style="font-size:12px;color:var(--gray-400)">â†’</span>
+        <span style="font-size:12px;color:var(--gray-400)">-&gt;</span>
         <span style="font-size:12px;color:var(--gray-500);white-space:nowrap">To</span>
         <input type="date" id="coach-date-to" value="${coachDateTo}"
           onchange="coachDateTo=this.value;renderCoachView()"
           style="border:none;outline:none;font-size:13px;font-family:inherit;color:var(--gray-700);cursor:pointer;background:transparent">
-        ${hasDateFilter ? `<button onclick="coachDateFrom='';coachDateTo='';renderCoachView()" style="border:none;background:none;cursor:pointer;font-size:14px;color:var(--gray-400);padding:0 0 0 4px;line-height:1" title="Clear filter">âœ•</button>` : ''}
+        ${hasDateFilter ? `<button onclick="coachDateFrom='';coachDateTo='';renderCoachView()" style="border:none;background:none;cursor:pointer;font-size:14px;color:var(--gray-400);padding:0 0 0 4px;line-height:1" title="Clear filter">Clear</button>` : ''}
       </div>
     </div>`;
 
@@ -3771,7 +3777,7 @@ function renderCoachView() {
     const rangeInfo = selectedMonth
       ? monthLabel(selectedMonth)
       : hasDateFilter
-        ? `${coachDateFrom ? fmtDate(coachDateFrom) : 'Start'} â†’ ${coachDateTo ? fmtDate(coachDateTo) : 'End'}`
+        ? `${coachDateFrom ? fmtDate(coachDateFrom) : 'Start'} -> ${coachDateTo ? fmtDate(coachDateTo) : 'End'}`
         : '';
     const isCurrentMonth = selectedMonth === currentMonthKey;
 
@@ -3785,7 +3791,7 @@ function renderCoachView() {
       const isCur = m === currentMonthKey;
       return `<div style="text-align:center;padding:6px 12px;background:${isCur ? '#EFF6FF' : 'var(--gray-50)'};border-radius:8px;border:1px solid ${isCur ? '#BFDBFE' : 'var(--gray-200)'}">
         <div style="font-size:16px;font-weight:700;color:${isCur ? '#1D4ED8' : 'var(--gray-800)'}">${formatSessionAmount(count)}</div>
-        <div style="font-size:10px;color:${isCur ? '#1E40AF' : 'var(--gray-500)'};text-transform:uppercase;letter-spacing:.3px">${monthLabel(m)}${isCur ? ' â—' : ''}</div>
+        <div style="font-size:10px;color:${isCur ? '#1E40AF' : 'var(--gray-500)'};text-transform:uppercase;letter-spacing:.3px">${monthLabel(m)}${isCur ? ' *' : ''}</div>
       </div>`;
     }).join('');
 
@@ -3889,7 +3895,7 @@ function renderCoachView() {
       : '';
     const loginSection = `
       <div style="border-top:1px solid var(--gray-100);padding:14px 20px;background:var(--gray-50)">
-        <div style="font-size:11px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">ðŸ”‘ Login Credentials</div>
+        <div style="font-size:11px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Login Credentials</div>
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:180px">
             <span style="font-size:10px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.4px">Email</span>
@@ -3897,9 +3903,9 @@ function renderCoachView() {
           </div>
           <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:140px">
             <span style="font-size:10px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.4px">Password</span>
-            <span style="font-size:13px;font-weight:600;color:var(--gray-700)">${coachLoginInfo ? 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢' : '<span style="color:var(--gray-400);font-style:italic">Not set</span>'}</span>
+            <span style="font-size:13px;font-weight:600;color:var(--gray-700)">${coachLoginInfo ? '********' : '<span style="color:var(--gray-400);font-style:italic">Not set</span>'}</span>
           </div>
-          <button class="btn btn-xs" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;padding:4px 12px;font-size:12px;border-radius:6px;cursor:pointer;flex-shrink:0" onclick="openCoachLoginModal('${esc(name)}')">${coachLoginInfo ? 'âœ Update' : '+ Set Login'}</button>
+          <button class="btn btn-xs" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;padding:4px 12px;font-size:12px;border-radius:6px;cursor:pointer;flex-shrink:0" onclick="openCoachLoginModal('${esc(name)}')">${coachLoginInfo ? 'Update' : '+ Set Login'}</button>
         </div>
       </div>`;
 
@@ -3912,7 +3918,7 @@ function renderCoachView() {
               <div style="font-size:18px;font-weight:700;color:var(--gray-800)">${esc(name)}</div>
               ${actionBtns}
             </div>
-            <div style="font-size:12px;color:var(--gray-500);margin-top:2px">${data.currentStudents.length} current student${data.currentStudents.length !== 1 ? 's' : ''}${data.pastStudents.length ? ` Â· ${data.pastStudents.length} past` : ''}</div>
+            <div style="font-size:12px;color:var(--gray-500);margin-top:2px">${data.currentStudents.length} current student${data.currentStudents.length !== 1 ? 's' : ''}${data.pastStudents.length ? ` - ${data.pastStudents.length} past` : ''}</div>
           </div>
         </div>
         <!-- Two-column body -->
@@ -3930,7 +3936,7 @@ function renderCoachView() {
             <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px">
               <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
                 <span style="font-size:26px;font-weight:800;color:#1D4ED8">${formatSessionAmount(sessionCount)}</span>
-                <span style="font-size:11px;font-weight:700;color:#1E40AF;text-transform:uppercase;letter-spacing:.3px">${selectedMonth ? 'Sessions Â· ' + sessionLabel : 'Total Sessions'}</span>
+                <span style="font-size:11px;font-weight:700;color:#1E40AF;text-transform:uppercase;letter-spacing:.3px">${selectedMonth ? 'Sessions - ' + sessionLabel : 'Total Sessions'}</span>
               </div>
               ${sessionBreakdownHTML}
             </div>
@@ -3938,7 +3944,7 @@ function renderCoachView() {
             <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:12px 14px">
               <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
                 <span style="font-size:26px;font-weight:800;color:#DC2626">${coachMissedCount}</span>
-                <span style="font-size:11px;font-weight:700;color:#B91C1C;text-transform:uppercase;letter-spacing:.3px">${selectedMonth ? 'Canceled Â· ' + sessionLabel : 'Coach Canceled'}</span>
+                <span style="font-size:11px;font-weight:700;color:#B91C1C;text-transform:uppercase;letter-spacing:.3px">${selectedMonth ? 'Canceled - ' + sessionLabel : 'Coach Canceled'}</span>
               </div>
               ${canceledBreakdownHTML}
             </div>
@@ -3949,12 +3955,12 @@ function renderCoachView() {
   }).join('');
 
   const noResultsMsg = coachQ && !filteredCoaches.length
-    ? `<div class="empty-state"><div class="ei">ðŸ”</div><h3>No results found</h3><p>No coaches match "<strong>${esc(coachQ)}</strong>".</p></div>`
+    ? `<div class="empty-state"><div class="ei">&bull;</div><h3>No results found</h3><p>No coaches match "<strong>${esc(coachQ)}</strong>".</p></div>`
     : filteredCards;
 
   document.getElementById('coaches-container').innerHTML = `
     <div class="dashboard-header">
-      <div><h1>Coaches</h1><p>${coaches.length} coach${coaches.length !== 1 ? 'es' : ''} Â· sessions attributed from student records</p></div>
+      <div><h1>Coaches</h1><p>${coaches.length} coach${coaches.length !== 1 ? 'es' : ''} - sessions attributed from student records</p></div>
       <button onclick="addCoach()" style="background:#DC2626;color:#fff;border:none;padding:10px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s" onmouseover="this.style.background='#B91C1C'" onmouseout="this.style.background='#DC2626'">+ New Coach</button>
     </div>
     ${toolbar}
@@ -4107,7 +4113,7 @@ function renderDashboard() {
   if (_userRole === 'coach' && !_coachName) {
     grid.innerHTML = `
       <div class="empty-state">
-        <div class="ei">ðŸ”’</div>
+        <div class="ei">&bull;</div>
         <h3>Coach profile not linked</h3>
         <p>This login is not connected to a coach name yet. Ask a team user to recreate or update this coach login.</p>
       </div>`;
@@ -4117,7 +4123,7 @@ function renderDashboard() {
   if (!students.length) {
     grid.innerHTML = `
       <div class="empty-state">
-        <div class="ei">ðŸ“‹</div>
+        <div class="ei">&bull;</div>
         <h3>${_userRole === 'coach' ? 'No assigned students' : 'No students yet'}</h3>
         <p>${_userRole === 'coach' ? 'Only students currently assigned to your coach profile will appear here.' : 'Click "+ New Student" to add your first student profile.'}</p>
       </div>`;
@@ -4136,7 +4142,7 @@ function renderDashboard() {
     : students;
 
   if (!filteredStudents.length) {
-    grid.innerHTML = `<div class="empty-state"><div class="ei">ðŸ”</div><h3>No results found</h3><p>No students match "<strong>${esc(searchQ)}</strong>".</p></div>`;
+    grid.innerHTML = `<div class="empty-state"><div class="ei">&bull;</div><h3>No results found</h3><p>No students match "<strong>${esc(searchQ)}</strong>".</p></div>`;
     return;
   }
 
@@ -4179,7 +4185,7 @@ function renderDashboard() {
   }
 
   if (!withMeta.length) {
-    grid.innerHTML = `<div class="empty-state"><div class="ei">ðŸ”</div><h3>No results found</h3><p>No students match the current ${hasDateFilters ? 'date filters' : 'filters'}.</p>${hasDateFilters ? '<button class="btn btn-secondary btn-sm" onclick="clearStudentDateFilters()" style="margin-top:10px">Clear Date Filters</button>' : ''}</div>`;
+    grid.innerHTML = `<div class="empty-state"><div class="ei">&bull;</div><h3>No results found</h3><p>No students match the current ${hasDateFilters ? 'date filters' : 'filters'}.</p>${hasDateFilters ? '<button class="btn btn-secondary btn-sm" onclick="clearStudentDateFilters()" style="margin-top:10px">Clear Date Filters</button>' : ''}</div>`;
     return;
   }
 
@@ -4241,12 +4247,12 @@ function renderDashboard() {
     const _allPauses = [...(s.pauses || []), ...(s.renewals || []).flatMap(r => r.pauses || [])];
     const isPaused = _allPauses.some(p => pauseContainsDate(p, todayStr));
     const statusBadge = s.withdrawn
-      ? `<span class="badge badge-withdrawn" style="white-space:nowrap">âœ• Withdrawn</span>`
+      ? `<span class="badge badge-withdrawn" style="white-space:nowrap">Withdrawn</span>`
       : allDone
-        ? `<span class="badge" style="background:#DCFCE7;color:#14532D;border:1px solid #86EFAC;white-space:nowrap">âœ“ Complete</span>`
+        ? `<span class="badge" style="background:#DCFCE7;color:#14532D;border:1px solid #86EFAC;white-space:nowrap">Complete</span>`
         : isPaused
-          ? `<span class="badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;white-space:nowrap">â¸ Paused</span>`
-          : `<span class="badge" style="background:#DCFCE7;color:#14532D;border:1px solid #86EFAC;white-space:nowrap">â— Active</span>`;
+          ? `<span class="badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;white-space:nowrap">Paused</span>`
+          : `<span class="badge" style="background:#DCFCE7;color:#14532D;border:1px solid #86EFAC;white-space:nowrap">Active</span>`;
 
     // Last session â€” check all programs (including renewals)
     const allSessions = [
@@ -4254,7 +4260,7 @@ function renderDashboard() {
       ...((s.renewals || []).flatMap(r => r.sessions || []))
     ];
     const lastSessDate = allSessions.filter(x => x.date).map(x => x.date).sort().pop();
-    let lastSessCell = `<span style="color:var(--gray-400);font-size:13px">â€”</span>`;
+    let lastSessCell = `<span style="color:var(--gray-400);font-size:13px">-</span>`;
     if (lastSessDate) {
       const days = Math.floor((new Date(todayStr + 'T00:00:00') - new Date(lastSessDate + 'T00:00:00')) / 86400000);
       const isRed = days >= 8;
@@ -4272,7 +4278,7 @@ function renderDashboard() {
     return `<tr style="border-bottom:1px solid var(--gray-200);cursor:pointer;transition:background .12s" onclick="goStudent('${s.id}')" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
       <td style="padding:12px 16px;min-width:160px">
         <div style="font-size:14px;font-weight:700;color:var(--gray-800)">${esc(s.fullName)}</div>
-        <div style="font-size:12px;color:var(--gray-500);margin-top:2px">ðŸ‘¤ ${esc(s.coach || 'â€”')}</div>
+        <div style="font-size:12px;color:var(--gray-500);margin-top:2px">Coach: ${esc(s.coach || '-')}</div>
       </td>
       <td style="padding:12px 16px">${statusBadge}</td>
       <td style="padding:12px 16px">
@@ -4291,13 +4297,13 @@ function renderDashboard() {
       <td style="padding:12px 16px;text-align:center;font-size:18px;font-weight:700;color:#991B1B">${remaining}</td>
       <td style="padding:12px 16px">${lastSessCell}</td>
       <td style="padding:12px 16px;font-size:12px;color:var(--gray-600);white-space:nowrap">${startPending ? dashboardPendingStartBadge() : fmtDate(startDate)}</td>
-      <td style="padding:12px 16px;font-size:12px;color:var(--gray-600);white-space:nowrap">${endDate ? fmtDate(endDate) : 'â€”'}</td>
+      <td style="padding:12px 16px;font-size:12px;color:var(--gray-600);white-space:nowrap">${endDate ? fmtDate(endDate) : '-'}</td>
     </tr>`;
   }).join('');
 
   const th = (txt, col) => {
     const active = dashSort.col === col;
-    const arrow = active ? (dashSort.dir === 'asc' ? ' â–²' : ' â–¼') : ' <span style="opacity:.25">â‡…</span>';
+    const arrow = active ? (dashSort.dir === 'asc' ? ' &#9650;' : ' &#9660;') : ' <span style="opacity:.25">&#8597;</span>';
     const dateFilterMap = {
       last: ['lastFrom', 'lastTo', 'Last session'],
       start: ['startFrom', 'startTo', 'Start date'],
@@ -4374,7 +4380,7 @@ function renderStudent(id) {
     { k: 'studyPlanExplained',t: 'In the first session, I explained how the study plan works and the student understood it.' },
     { k: 'homeworkAssigned',  t: 'Homework (Essay, Reading & Listening) has been assigned after the first session.' },
     { k: 'studyPlanAdjusted', t: 'Study plan has been adjusted according to the student\'s goals and needs.' },
-    { k: 'sessionsAdjusted',  t: 'Sessions were adjusted after 2â€“3 meetings based on the student\'s preferences, needs, and goals.' }
+    { k: 'sessionsAdjusted',  t: 'Sessions were adjusted after 2-3 meetings based on the student\'s preferences, needs, and goals.' }
   ];
   const checksDone = checks.filter(c => s.checklist[c.k]).length;
 
@@ -4384,22 +4390,22 @@ function renderStudent(id) {
     const wdReason = s.withdrawalReason ? `<br><span style="font-size:12px;margin-top:3px;display:inline-block">Reason: ${esc(s.withdrawalReason)}</span>` : '';
     alert = `<div class="alert alert-danger" style="justify-content:space-between">
       <div style="display:flex;align-items:flex-start;gap:12px">
-        <span class="alert-icon">âœ•</span>
+        <span class="alert-icon">!</span>
         <div class="alert-body"><strong>Student Withdrawn${wdDate}</strong>
         <span>This student withdrew from the program.${wdReason}</span></div>
       </div>
-      ${canManageStudent ? `<button class="btn btn-xs" style="flex-shrink:0;background:white;border:1px solid #FECACA;color:#991B1B;margin-left:12px;align-self:flex-start" onclick="openWithdrawModal('${s.id}', true)">âœ Edit</button>` : ''}
+      ${canManageStudent ? `<button class="btn btn-xs" style="flex-shrink:0;background:white;border:1px solid #FECACA;color:#991B1B;margin-left:12px;align-self:flex-start" onclick="openWithdrawModal('${s.id}', true)">Edit</button>` : ''}
     </div>`;
   } else if (done === total && total > 0) {
     alert = `<div class="alert alert-success">
-      <span class="alert-icon">ðŸŽ‰</span>
+      <span class="alert-icon">!</span>
       <div class="alert-body"><strong>Program ${displayedActiveProgramNum > 1 || totalPrograms > 1 ? displayedActiveProgramNum + ' ' : ''}Complete!</strong>
       <span>All ${total} sessions finished. Please complete the End of Program summary below.</span></div>
     </div>`;
   } else if (!activeProg.programStartDate) {
     const pendingStart = isProgramStartPending(activeProg) || !activeProg.programStartDate;
     alert = `<div class="alert alert-info">
-      <span class="alert-icon">ðŸ’¡</span>
+      <span class="alert-icon">!</span>
       <div class="alert-body"><strong>${pendingStart ? 'Start Date Pending' : 'Set a Start Date'}</strong>
       <span>${pendingStart ? 'Use + Log Session on Day 1 and enter the date there. The first logged session date becomes the start date of the program.' : 'Add a program start date in the profile to automatically detect missed sessions per week.'}</span></div>
     </div>`;
@@ -4408,7 +4414,7 @@ function renderStudent(id) {
 
   document.getElementById('student-container').innerHTML = `
     <div class="back-bar">
-      <button class="back-btn" onclick="goDashboard()">â† Back to Dashboard</button>
+      <button class="back-btn" onclick="goDashboard()">&larr; Back to Dashboard</button>
     </div>
 
     <div class="sdh">
@@ -4432,19 +4438,19 @@ function renderStudent(id) {
               return `
                 ${progLabel ? `<span class="badge badge-program-num">${progLabel}</span>` : ''}
                 <span class="badge badge-${progType}">${pt.label}</span>
-                <span class="badge badge-level">Coach: ${esc(s.coach || 'â€”')}</span>`;
+                <span class="badge badge-level">Coach: ${esc(s.coach || '-')}</span>`;
             })()}
           </div>
         </div>
         <div class="sdh-actions">
-          ${canManageStudent ? `<button class="btn btn-secondary btn-sm" onclick="openStudentForm('${s.id}')">âœ Edit Profile</button>` : ''}
-          ${canManageStudent ? `<button class="btn btn-secondary btn-sm" onclick="startNewProgram('${s.id}')">ðŸ”„ Renew Program</button>` : ''}
+          ${canManageStudent ? `<button class="btn btn-secondary btn-sm" onclick="openStudentForm('${s.id}')">Edit Profile</button>` : ''}
+          ${canManageStudent ? `<button class="btn btn-secondary btn-sm" onclick="startNewProgram('${s.id}')">Renew Program</button>` : ''}
           ${canManageStudent
             ? (s.withdrawn
-              ? `<button class="btn btn-secondary btn-sm" onclick="undoWithdrawal('${s.id}')">â†© Undo Withdrawal</button>`
-              : `<button class="btn btn-sm" style="background:#6B7280;color:white;border:none" onclick="openWithdrawModal('${s.id}')">âœ• Withdraw</button>`)
+              ? `<button class="btn btn-secondary btn-sm" onclick="undoWithdrawal('${s.id}')">Undo Withdrawal</button>`
+              : `<button class="btn btn-sm" style="background:#6B7280;color:white;border:none" onclick="openWithdrawModal('${s.id}')">Withdraw</button>`)
             : ''}
-          ${canManageStudent ? `<button class="btn btn-danger btn-sm" onclick="askDeleteStudent('${s.id}')">ðŸ—‘ Delete</button>` : ''}
+          ${canManageStudent ? `<button class="btn btn-danger btn-sm" onclick="askDeleteStudent('${s.id}')">Delete</button>` : ''}
         </div>
       </div>
     </div>
@@ -4458,7 +4464,7 @@ function renderStudent(id) {
         const isActive = i === activeProgramIdx;
         return `<button onclick="switchProgram('${s.id}',${i})" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:2px solid ${isActive?'#111827':'var(--gray-200)'};background:${isActive?'#111827':'white'};color:${isActive?'white':'var(--gray-600)'};font-size:13px;font-weight:600;cursor:pointer">
           ${getDisplayedProgramLabel(s, i)}
-          ${pDone >= pTotal && pTotal > 0 ? `<span style="background:#16A34A;color:white;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px">âœ“</span>` : `<span style="font-size:11px;color:${isActive?'#9CA3AF':'var(--gray-400)'}">${pDone}/${pTotal}</span>`}
+          ${pDone >= pTotal && pTotal > 0 ? `<span style="background:#16A34A;color:white;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px">Done</span>` : `<span style="font-size:11px;color:${isActive?'#9CA3AF':'var(--gray-400)'}">${pDone}/${pTotal}</span>`}
         </button>`;
       }).join('')}
     </div>` : ''}
@@ -4478,7 +4484,7 @@ function renderStudent(id) {
         }
         if (boxes.length) return boxes.join('');
         const placeholder = activeProgramNum === 1 && totalPrograms > 1 ? 'Carried to Next' : 'Carry-over';
-        return `<div class="stat-box" style="border-color:#E5E7EB"><div class="stat-box-val" style="color:#9CA3AF">â€”</div><div class="stat-box-lbl">${placeholder}</div></div>`;
+        return `<div class="stat-box" style="border-color:#E5E7EB"><div class="stat-box-val" style="color:#9CA3AF">-</div><div class="stat-box-lbl">${placeholder}</div></div>`;
       })()}
     </div>
 
@@ -4487,8 +4493,8 @@ function renderStudent(id) {
     <!-- Profile Section -->
     <div class="section open" id="sec-profile">
       <div class="sec-header" onclick="toggleSec('sec-profile')">
-        <span class="sec-title">ðŸ‘¤ Student Profile</span>
-        <span class="sec-toggle">â–¼</span>
+        <span class="sec-title">Student Profile</span>
+        <span class="sec-toggle">&#9660;</span>
       </div>
       <div class="sec-body">
         <div style="display:grid;grid-template-columns:1fr 1.6fr 1fr;gap:20px;align-items:start">
@@ -4499,14 +4505,14 @@ function renderStudent(id) {
               <span>Current Coach</span>
               ${canManageStudent ? `<button class="btn btn-secondary btn-xs" style="font-size:11px;padding:2px 8px" onclick="openChangeCoach('${s.id}')">+ Change Coach</button>` : ''}
             </label>
-            <p style="font-weight:600;margin-top:4px">${esc(s.coach || 'â€”')}</p>
+            <p style="font-weight:600;margin-top:4px">${esc(s.coach || '-')}</p>
             ${(s.coachHistory||[]).length >= 1 ? `<div style="margin-top:8px;font-size:12px;color:var(--gray-500)">
               ${[...(s.coachHistory||[])].sort((a,b)=>a.startDate.localeCompare(b.startDate)).map((h,i,arr) =>
                 `<div style="display:flex;gap:6px;align-items:center;margin-top:5px">
                   <span style="color:var(--gray-400);min-width:52px">${i===arr.length-1?'Current':'Previous'}:</span>
                   <span style="font-weight:600;color:var(--gray-700)">${esc(h.coach)}</span>
                   <span style="color:var(--gray-400)">from ${fmtDate(h.startDate)}</span>
-                  ${canManageStudent ? `<button onclick="openEditCoachEntry('${s.id}',${i})" title="Edit this entry" style="background:none;border:none;cursor:pointer;color:var(--gray-400);font-size:12px;padding:0 2px;line-height:1" onmouseover="this.style.color='#374151'" onmouseout="this.style.color='var(--gray-400)'">âœ</button>` : ''}
+                  ${canManageStudent ? `<button onclick="openEditCoachEntry('${s.id}',${i})" title="Edit this entry" style="background:none;border:none;cursor:pointer;color:var(--gray-400);font-size:12px;padding:0 2px;line-height:1" onmouseover="this.style.color='#374151'" onmouseout="this.style.color='var(--gray-400)'">Edit</button>` : ''}
                 </div>`
               ).join('')}
             </div>` : ''}
@@ -4541,10 +4547,10 @@ function renderStudent(id) {
                 const badge = isCurrent && !isCompleted
                   ? `<span style="background:#DCFCE7;color:#15803D;font-size:10px;font-weight:700;padding:1px 7px;border-radius:99px;margin-left:6px">Current</span>`
                   : isCompleted
-                  ? `<span style="background:#F0FDF4;color:#16A34A;font-size:10px;font-weight:700;padding:1px 7px;border-radius:99px;margin-left:6px">âœ“ Done</span>`
+                  ? `<span style="background:#F0FDF4;color:#16A34A;font-size:10px;font-weight:700;padding:1px 7px;border-radius:99px;margin-left:6px">Done</span>`
                   : '';
                 const dateText = startStr
-                  ? `${fmtDate(startStr)}${endStr ? ' â†’ ' + fmtDate(endStr) : ''}`
+                  ? `${fmtDate(startStr)}${endStr ? ' -> ' + fmtDate(endStr) : ''}`
                   : isProgramStartPending(progObj) ? pendingStartBadge('Start date pending') : 'No start date';
                 rows.push(`<div style="padding:8px 0;border-bottom:1px solid var(--gray-100);${i===totalPrograms-1?'border-bottom:none':''}">
                   <div style="display:flex;align-items:center">
@@ -4552,7 +4558,7 @@ function renderStudent(id) {
                     <span style="font-size:13px;font-weight:600;color:var(--gray-700)">${getDisplayedProgramLabel(s, i)}</span>
                     ${badge}
                   </div>
-                  <div style="margin-left:15px;margin-top:3px;font-size:12px;color:var(--gray-500)">${pt.label} Â· ${pt.spw === 2 ? '2 sessions/week' : '1 session/week'} Â· ${pt.sessions} sessions max</div>
+                  <div style="margin-left:15px;margin-top:3px;font-size:12px;color:var(--gray-500)">${pt.label} - ${pt.spw === 2 ? '2 sessions/week' : '1 session/week'} - ${pt.sessions} sessions max</div>
                   <div style="margin-left:15px;margin-top:1px;font-size:12px;color:var(--gray-400)">${dateText}</div>
                 </div>`);
               }
@@ -4562,11 +4568,11 @@ function renderStudent(id) {
 
           <!-- Right column: small details stacked -->
           <div style="display:flex;flex-direction:column;gap:16px">
-            <div class="info-item"><label>Speaking Level</label><p>${esc(s.speakingLevel || 'â€”')}</p></div>
-            <div class="info-item"><label>Type of Spanish</label><p>${esc(formatSpanishType(s.typeOfSpanish) || 'â€”')}</p></div>
+            <div class="info-item"><label>Speaking Level</label><p>${esc(s.speakingLevel || '-')}</p></div>
+            <div class="info-item"><label>Type of Spanish</label><p>${esc(formatSpanishType(s.typeOfSpanish) || '-')}</p></div>
             <div class="info-item"><label>Program Start</label><p>${formatProgramStart(s)}</p></div>
-            <div class="info-item"><label>Schedule</label><p>${esc(s.schedule || 'â€”')}</p></div>
-            ${s.studyPlanLink ? `<div class="info-item"><label>Study Plan</label><p><a href="${esc(s.studyPlanLink)}" target="_blank" rel="noopener">Open Google Doc â†—</a></p></div>` : ''}
+            <div class="info-item"><label>Schedule</label><p>${esc(s.schedule || '-')}</p></div>
+            ${s.studyPlanLink ? `<div class="info-item"><label>Study Plan</label><p><a href="${esc(s.studyPlanLink)}" target="_blank" rel="noopener">Open Google Doc</a></p></div>` : ''}
           </div>
 
         </div>
@@ -4574,7 +4580,7 @@ function renderStudent(id) {
         <!-- Goals full width -->
         <div class="info-item" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--gray-100)">
           <label>Goals & Objectives</label>
-          <p>${esc(s.goals || 'â€”')}</p>
+          <p>${esc(s.goals || '-')}</p>
         </div>
       </div>
     </div>
@@ -4582,8 +4588,8 @@ function renderStudent(id) {
     <!-- Program Pauses -->
     <div class="section" id="sec-pauses">
       <div class="sec-header" onclick="toggleSec('sec-pauses')">
-        <span class="sec-title">â¸ Program Pauses ${(()=>{const _allP=[...(s.pauses||[]),...(s.renewals||[]).flatMap(r=>r.pauses||[])];const pp=[...new Map(_allP.map(p=>[p.id,p])).values()];return pp.length?`<span style="font-weight:400;color:var(--gray-400);font-size:13px">${pp.length} pause${pp.length!==1?'s':''} recorded</span>`:''})()}</span>
-        <span class="sec-toggle">â–¼</span>
+        <span class="sec-title">Program Pauses ${(()=>{const _allP=[...(s.pauses||[]),...(s.renewals||[]).flatMap(r=>r.pauses||[])];const pp=[...new Map(_allP.map(p=>[p.id,p])).values()];return pp.length?`<span style="font-weight:400;color:var(--gray-400);font-size:13px">${pp.length} pause${pp.length!==1?'s':''} recorded</span>`:''})()}</span>
+        <span class="sec-toggle">&#9660;</span>
       </div>
       <div class="sec-body hidden">
         <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px">Add pause periods when the program is on hold. Pause rows will appear in the session log and weeks after the pause will automatically shift.</p>
@@ -4595,8 +4601,8 @@ function renderStudent(id) {
     <!-- Checklist -->
     <div class="section" id="sec-checklist">
       <div class="sec-header" onclick="toggleSec('sec-checklist')">
-        <span class="sec-title">âœ… Coach Checklist <span style="font-weight:400;color:var(--gray-400);font-size:13px">${checksDone}/${checks.length} completed</span></span>
-        <span class="sec-toggle">â–¼</span>
+        <span class="sec-title">Coach Checklist <span style="font-weight:400;color:var(--gray-400);font-size:13px">${checksDone}/${checks.length} completed</span></span>
+        <span class="sec-toggle">&#9660;</span>
       </div>
       <div class="sec-body hidden">
         <ul class="checklist">
@@ -4612,8 +4618,8 @@ function renderStudent(id) {
     <!-- Session Log -->
     <div class="section open" id="sec-sessions">
       <div class="sec-header" onclick="toggleSec('sec-sessions')">
-        <span class="sec-title">ðŸ“… Session Log</span>
-        <span class="sec-toggle">â–¼</span>
+        <span class="sec-title">Session Log</span>
+        <span class="sec-toggle">&#9660;</span>
       </div>
       <div class="sec-body" style="padding:0">
         ${buildAllProgramsLog(s)}
@@ -4632,14 +4638,14 @@ function renderStudentRecoveryView(student) {
   if (!container) return;
   const idJson = JSON.stringify(student?.id || '');
   const name = esc(student?.fullName || student?.name || 'Unnamed student');
-  const coach = esc(student?.coach || 'â€”');
-  const programLabel = student?.programNum ? `${ordinal(Number(student.programNum) || student.programNum)} Program` : 'â€”';
+  const coach = esc(student?.coach || '-');
+  const programLabel = student?.programNum ? `${ordinal(Number(student.programNum) || student.programNum)} Program` : '-';
   const startText = isProgramStartPending(student)
     ? '<span class="pending-start-badge">Pending</span>'
-    : (student?.programStartDate ? fmtDate(student.programStartDate) : 'â€”');
+    : (student?.programStartDate ? fmtDate(student.programStartDate) : '-');
   container.innerHTML = `
     <div class="back-bar">
-      <button class="back-btn" onclick="goDashboard()">â† Back to Dashboard</button>
+      <button class="back-btn" onclick="goDashboard()">&larr; Back to Dashboard</button>
     </div>
     <div class="section open">
       <div class="sec-header">
@@ -4647,7 +4653,7 @@ function renderStudentRecoveryView(student) {
       </div>
       <div class="sec-body">
         <div class="alert alert-danger" style="margin-bottom:16px">
-          <span class="alert-icon">âš </span>
+          <span class="alert-icon">!</span>
           <div class="alert-body">
             <strong>This profile has older or incomplete data.</strong>
             <span>The full profile view could not load, but you can still manage or delete this student from here.</span>
@@ -4732,14 +4738,14 @@ function buildEOPBlock(s, programIdx) {
   const focusAreas = eopData.focusAreas || '';
   return `<div style="border-top:2px solid var(--gray-200);background:white">
     <div style="display:flex;align-items:center;padding:12px 20px;gap:10px;background:var(--gray-50)">
-      <span style="font-size:14px;font-weight:700;color:var(--gray-700)">ðŸ End of Program Summary</span>
+      <span style="font-size:14px;font-weight:700;color:var(--gray-700)">End of Program Summary</span>
     </div>
     <div style="padding:16px 20px">
       <p style="font-size:13px;color:var(--gray-500);margin-bottom:14px">Provide a progress summary highlighting the student's key strengths and 3 focus areas for improvement.</p>
       <div class="eop-grid">
         <div class="eop-field">
           <label>Key Strengths</label>
-          <textarea id="eop-strengths-${programIdx}" placeholder="e.g. Great improvement in conversational fluency, strong vocabulary retentionâ€¦">${esc(strengths)}</textarea>
+          <textarea id="eop-strengths-${programIdx}" placeholder="e.g. Great improvement in conversational fluency, strong vocabulary retention...">${esc(strengths)}</textarea>
         </div>
         <div class="eop-field">
           <label>3 Focus Areas for Improvement</label>
@@ -4775,11 +4781,11 @@ function buildAllProgramsLog(s) {
     if (info.overflowSessions.length) {
       return info.overflowSessions.map(sess => {
         const ov = info.overflowMap[sess.id];
-        const dur = sess.duration ? `${sess.duration} min` : 'â€”';
+        const dur = sess.duration ? `${sess.duration} min` : '-';
         return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #FED7AA">
           <span style="font-size:13px;color:#92400E;min-width:110px">${fmtDate(sess.date)}</span>
           <span style="font-size:13px;color:#78350F">${dur}</span>
-          <span style="font-size:13px;color:#92400E;flex:1">${esc(sess.topic || 'â€”')}</span>
+          <span style="font-size:13px;color:#92400E;flex:1">${esc(sess.topic || '-')}</span>
           <span style="font-size:12px;font-weight:700;color:#B45309;background:#FEF3C7;padding:2px 8px;border-radius:6px;white-space:nowrap">${formatSessionAmount(ov.overflowAmt)} session${ov.overflowAmt !== 1 ? 's' : ''} over cap</span>
         </div>`;
       }).join('');
@@ -4812,21 +4818,21 @@ function buildAllProgramsLog(s) {
 
     if (totalPrograms > 1 || getProgramNumberBase(s) > 1) {
       const editDateBtn = canEditProgramStartDate(s, prog.programIdx) && (prog.programIdx > 0 || getProgramNumberBase(s) > 1)
-        ? `<button onclick="changeProgramStartDate('${s.id}',${prog.programIdx})" title="Edit start date" style="background:none;border:1px solid #4B5563;color:#9CA3AF;font-size:11px;padding:2px 8px;border-radius:6px;cursor:pointer;margin-left:6px">âœ Edit Date</button>`
+        ? `<button onclick="changeProgramStartDate('${s.id}',${prog.programIdx})" title="Edit start date" style="background:none;border:1px solid #4B5563;color:#9CA3AF;font-size:11px;padding:2px 8px;border-radius:6px;cursor:pointer;margin-left:6px">Edit Date</button>`
         : '';
       const editTypeBtn = canManageStudent && prog.programIdx > 0
-        ? `<button onclick="openChangeProgramType('${s.id}',${prog.programIdx})" title="Edit program type" style="background:none;border:1px solid #4B5563;color:#9CA3AF;font-size:11px;padding:2px 8px;border-radius:6px;cursor:pointer;margin-left:4px">âœ Edit Type</button>`
+        ? `<button onclick="openChangeProgramType('${s.id}',${prog.programIdx})" title="Edit program type" style="background:none;border:1px solid #4B5563;color:#9CA3AF;font-size:11px;padding:2px 8px;border-radius:6px;cursor:pointer;margin-left:4px">Edit Type</button>`
         : '';
       const collapseBtn = isCompleted
-        ? `<button onclick="toggleProgramCollapse('${s.id}',${prog.programIdx})" style="margin-left:auto;background:none;border:1px solid #4B5563;color:#9CA3AF;font-size:11px;padding:2px 10px;border-radius:6px;cursor:pointer">${isCollapsed ? 'â–¼ Show' : 'â–² Hide'}</button>`
+        ? `<button onclick="toggleProgramCollapse('${s.id}',${prog.programIdx})" style="margin-left:auto;background:none;border:1px solid #4B5563;color:#9CA3AF;font-size:11px;padding:2px 10px;border-radius:6px;cursor:pointer">${isCollapsed ? 'Show' : 'Hide'}</button>`
         : '';
       const isCurrent = i === currentProgramI;
       const headerBg = isCurrent ? '#14532D' : '#111827';
       const completedBadge = isCompleted
-        ? `<span style="background:#16A34A;color:white;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:10px">âœ“ Completed</span>`
+        ? `<span style="background:#16A34A;color:white;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:10px">Completed</span>`
         : '';
       const currentBadge = isCurrent && !isCompleted
-        ? `<span style="background:#4ADE80;color:#14532D;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:10px">â— Current Program</span>`
+        ? `<span style="background:#4ADE80;color:#14532D;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:10px">Current Program</span>`
         : '';
       const startStatus = progObj.programStartDate
         ? `Starts ${fmtDate(progObj.programStartDate)}`
@@ -4843,7 +4849,7 @@ function buildAllProgramsLog(s) {
         const fromInfo = overflowInfoByProgram[i - 1];
         const fromObj = { ...s, ...programs[i - 1] };
         html += `<div style="background:#FFF7ED;border-bottom:2px solid #FED7AA;padding:14px 20px">
-          <div style="font-size:13px;font-weight:800;color:#92400E;margin-bottom:10px">ðŸ“‹ Sessions carried over from ${getDisplayedProgramLabel(s, i - 1)} <span style="font-weight:400;color:#B45309;font-size:12px">(exceeded ${Logic.totalSessions(fromObj)}-session cap)</span></div>
+          <div style="font-size:13px;font-weight:800;color:#92400E;margin-bottom:10px">Sessions carried over from ${getDisplayedProgramLabel(s, i - 1)} <span style="font-weight:400;color:#B45309;font-size:12px">(exceeded ${Logic.totalSessions(fromObj)}-session cap)</span></div>
           ${renderCarryOverRows(fromInfo)}
           <div style="margin-top:10px;font-size:13px;font-weight:700;color:#92400E">Total carried over: <span style="color:#B45309">${formatSessionAmount(progCarryOver)} session${progCarryOver !== 1 ? 's' : ''}</span></div>
         </div>`;
@@ -4857,7 +4863,7 @@ function buildAllProgramsLog(s) {
         html += buildDaySessionLog(progObj, prog.programIdx, totalPrograms, overflowInfo.overflowMap, combinedPauses);
         if (i === totalPrograms - 1 && overflowInfo.carryOut > 0) {
           html += `<div style="background:#FFF7ED;border-top:2px solid #FED7AA;padding:14px 20px">
-            <div style="font-size:13px;font-weight:800;color:#92400E;margin-bottom:6px">â³ Sessions pending carry-over <span style="font-weight:400;color:#B45309;font-size:12px">(exceeded ${Logic.totalSessions(progObj)}-session cap â€” will apply when program is renewed)</span></div>
+            <div style="font-size:13px;font-weight:800;color:#92400E;margin-bottom:6px">Sessions pending carry-over <span style="font-weight:400;color:#B45309;font-size:12px">(exceeded ${Logic.totalSessions(progObj)}-session cap - will apply when program is renewed)</span></div>
             ${renderCarryOverRows(overflowInfo)}
             <div style="margin-top:10px;font-size:13px;font-weight:700;color:#92400E">Total pending: <span style="color:#B45309">${formatSessionAmount(overflowInfo.carryOut)} session${overflowInfo.carryOut !== 1 ? 's' : ''}</span></div>
           </div>`;
@@ -4925,11 +4931,11 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
     // Insert withdrawal banner at the first day on/after the withdrawal date (within this program)
     if (withdrawDate && !withdrawnInserted && dateISO >= withdrawDate) {
       const wdStr = new Date(withdrawDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-      const wdReason = s.withdrawalReason ? ` Â· ${esc(s.withdrawalReason)}` : '';
+      const wdReason = s.withdrawalReason ? ` - ${esc(s.withdrawalReason)}` : '';
       rows += `<tr>
         <td colspan="3" style="padding:16px 20px;background:#F3F4F6;border-top:3px solid #D1D5DB;border-bottom:3px solid #D1D5DB">
           <div style="display:flex;align-items:center;gap:12px">
-            <span style="font-size:18px;color:#6B7280">âœ•</span>
+            <span style="font-size:18px;color:#6B7280">&times;</span>
             <div>
               <div style="font-size:14px;font-weight:700;color:#374151">Student Withdrawn</div>
               <div style="font-size:12px;color:#6B7280;margin-top:2px">${wdStr}${wdReason}</div>
@@ -4957,14 +4963,14 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
         else break;
       }
       const lastDate = dayDate(lastPausedDay);
-      const dayRange = lastPausedDay > dayNum ? `Days ${dayNum}â€“${lastPausedDay}` : `Day ${dayNum}`;
+      const dayRange = lastPausedDay > dayNum ? `Days ${dayNum}-${lastPausedDay}` : `Day ${dayNum}`;
       const dateRange = isIndefinite ? `${fmtShortYear(date)} onward` : fmtDateRange(date, lastDate);
       rows += `<tr style="border-top:3px solid #FCA5A5;border-bottom:3px solid #FCA5A5;background:#FEE2E2;">
         <td style="padding:14px 16px;font-weight:800;color:#DC2626;text-align:right;font-size:13px;vertical-align:middle;white-space:nowrap;border-right:2px solid #FCA5A5">${dayRange}</td>
         <td style="padding:14px 14px;font-size:14px;font-weight:700;color:#B91C1C;vertical-align:middle;white-space:nowrap;border-right:2px solid #FCA5A5">${dateRange}</td>
         <td style="padding:14px 18px;vertical-align:middle">
           <div style="display:flex;align-items:center;gap:10px">
-            <span style="font-size:16px;font-weight:800;color:#991B1B;letter-spacing:.2px">${isIndefinite ? 'â¸ Program Paused Indefinitely' : 'â¸ Program Paused'}</span>
+            <span style="font-size:16px;font-weight:800;color:#991B1B;letter-spacing:.2px">${isIndefinite ? 'Program Paused Indefinitely' : 'Program Paused'}</span>
             ${pause.reason ? `<span style="font-size:13px;font-weight:500;color:#DC2626;background:#FECACA;padding:3px 10px;border-radius:99px">${esc(pause.reason)}</span>` : ''}
           </div>
         </td>
@@ -4980,7 +4986,7 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
       rows += `<tr style="background:#F9FAFB;border-top:3px solid #D1D5DB;border-bottom:3px solid #D1D5DB;">
         <td colspan="3" style="padding:14px 20px;">
           <div style="display:inline-flex;align-items:center;gap:10px;background:white;border:2px solid #E5E7EB;border-radius:10px;padding:10px 18px;box-shadow:0 1px 4px rgba(0,0,0,.08)">
-            <span style="font-size:20px">ðŸ‘¤</span>
+            <span style="font-size:12px;font-weight:700;color:var(--gray-500);text-transform:uppercase">Coach</span>
             <div>
               <div style="font-size:14px;font-weight:800;color:#111827">Coach changed to ${esc(ch.coach)}</div>
               <div style="font-size:12px;color:#6B7280;margin-top:2px">Effective ${dateStr}</div>
@@ -5005,7 +5011,7 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
           const card = buildSlot(s.id, sess.week, sess.slot, sess, phase, globalNum, false, s, true, programIdx);
           const ov = overflowMap[sess.id];
           const overflowNote = ov
-            ? `<div style="margin-top:4px;padding:5px 10px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:6px;font-size:12px;font-weight:600;color:#92400E">âš  ${ov.overflowAmt} session${ov.overflowAmt!==1?'s':''} from this entry counted on the next program${ov.p1Amt > 0 ? ` (${ov.p1Amt} counted here)` : ''}</div>`
+            ? `<div style="margin-top:4px;padding:5px 10px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:6px;font-size:12px;font-weight:600;color:#92400E">Warning: ${ov.overflowAmt} session${ov.overflowAmt!==1?'s':''} from this entry counted on the next program${ov.p1Amt > 0 ? ` (${ov.p1Amt} counted here)` : ''}</div>`
             : '';
           return card + overflowNote;
         }).join('')}</div>`
@@ -5015,7 +5021,7 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
       ? `<button class="btn btn-xs" style="background:#F59E0B;color:white;font-weight:600;font-size:11px;white-space:nowrap" onclick="openSessionForm('${s.id}',${weekNum},${(s.sessions||[]).filter(x=>x.week===weekNum).length+1},null,'${dateISO}',${programIdx})">+ Log Session</button>`
       : '';
     const deleteExtraBtn = isExtra
-      ? `<button class="btn btn-xs" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;font-size:10px;white-space:nowrap" onclick="deleteExtraDay('${s.id}',${dayNum},${programIdx})" title="Remove Day ${dayNum} and all days after">âœ• Remove</button>`
+      ? `<button class="btn btn-xs" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;font-size:10px;white-space:nowrap" onclick="deleteExtraDay('${s.id}',${dayNum},${programIdx})" title="Remove Day ${dayNum} and all days after">Remove</button>`
       : '';
 
     const primaryStatus = daySessions[0]?.status || null;
@@ -5058,7 +5064,7 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
   </tr></table>`;
 
   const extendBar = `<div style="padding:12px 20px;border-top:2px solid #E5E7EB;display:flex;align-items:center;gap:10px;background:#F9FAFB;flex-wrap:wrap">
-    <span style="font-size:13px;color:var(--gray-500)">Day ${totalDays} â€” end of calendar</span>
+    <span style="font-size:13px;color:var(--gray-500)">Day ${totalDays} - end of calendar</span>
     <button class="btn btn-secondary btn-sm" onclick="promptExtendCalendar('${s.id}',${programIdx})">+ Add More Dates</button>
   </div>`;
   return `<table style="width:100%;border-collapse:collapse"><colgroup><col style="width:80px"><col style="width:240px"><col></colgroup>${rows}</table>${endOfProgramRow}${withdrawnInserted ? '' : extendBar}`;
@@ -5075,7 +5081,7 @@ function buildCalendarTable(s) {
     if (slot.type === 'pause') {
       const ps = fmtShort(new Date(slot.pause.startDate + 'T00:00:00'));
       const pe = isIndefinitePause(slot.pause) ? 'Indefinite' : fmtShort(new Date(slot.pause.endDate + 'T00:00:00'));
-      rows += `<tr><td colspan="2" style="padding:7px 20px;background:#FEE2E2;color:#B91C1C;font-weight:700;font-size:12px;border-top:2px solid #FECACA;border-bottom:2px solid #FECACA;text-align:center">â¸ Program Paused: ${ps} â€“ ${pe} (${slot.pause.reason||''})</td></tr>`;
+      rows += `<tr><td colspan="2" style="padding:7px 20px;background:#FEE2E2;color:#B91C1C;font-weight:700;font-size:12px;border-top:2px solid #FECACA;border-bottom:2px solid #FECACA;text-align:center">Program Paused: ${ps} - ${pe} (${slot.pause.reason||''})</td></tr>`;
     } else {
       const days = 7;
       for (let d = 0; d < days; d++) {
@@ -5099,13 +5105,13 @@ function buildWeekRow(s, w, programIdx = null) {
   const { firstDay, lastDay } = weekDayRange(w);
 
   let tag = '';
-  if (wi.isRescheduling)   tag = `<span class="week-tag wt-reschedule">â†© Rescheduling</span>`;
-  else if (wi.isMissed)    tag = `<span class="week-tag wt-missed">âš  Missed Session</span>`;
-  else if (wi.isComplete)  tag = `<span class="week-tag wt-done">âœ“ Complete</span>`;
-  else if (wi.isCurrent)   tag = `<span class="week-tag wt-current">â— In Progress</span>`;
+  if (wi.isRescheduling)   tag = `<span class="week-tag wt-reschedule">Rescheduling</span>`;
+  else if (wi.isMissed)    tag = `<span class="week-tag wt-missed">Missed Session</span>`;
+  else if (wi.isComplete)  tag = `<span class="week-tag wt-done">Complete</span>`;
+  else if (wi.isCurrent)   tag = `<span class="week-tag wt-current">In Progress</span>`;
   else if (wi.phase === 'future') tag = `<span class="week-tag wt-future">Upcoming</span>`;
 
-  const dateRange = wi.range ? `${fmtShort(wi.range.start)} â€“ ${fmtShort(wi.range.end)}` : '';
+  const dateRange = wi.range ? `${fmtShort(wi.range.start)} - ${fmtShort(wi.range.end)}` : '';
 
   const dots = Array.from({ length: spw }, (_, i) => {
     const sess = wi.sessions.find(x => x.slot === i + 1);
@@ -5126,7 +5132,7 @@ function buildWeekRow(s, w, programIdx = null) {
     const isPast = wi.phase === 'past';
     slotsHTML = isPast
       ? `<div class="slot-card sc-warning" style="align-items:center;padding:11px 16px">
-           <span style="font-size:13px;font-weight:700;color:#92400E;flex:1">âš  No sessions recorded for this week</span>
+           <span style="font-size:13px;font-weight:700;color:#92400E;flex:1">No sessions recorded for this week</span>
            <button class="btn btn-xs" style="background:#F59E0B;color:white;font-weight:600" onclick="openSessionForm('${s.id}',${w},1)">Log Now</button>
          </div>`
       : `<div style="font-size:13px;color:var(--gray-400);padding:4px 0">No sessions logged yet.</div>`;
@@ -5140,7 +5146,7 @@ function buildWeekRow(s, w, programIdx = null) {
     <div class="week-row" id="wrow-${w}">
       <div class="wk-left">
         ${tag}
-        <div class="wk-meta" style="margin-top:6px">Days ${firstDay}â€“${lastDay}</div>
+        <div class="wk-meta" style="margin-top:6px">Days ${firstDay}-${lastDay}</div>
         ${dateRange ? `<div style="font-size:13px;font-weight:700;color:var(--blue);margin-top:1px">${dateRange}</div>` : ''}
         <div class="wk-dots">
           <div class="week-dots">${dots}</div>
@@ -5164,28 +5170,28 @@ function buildSlot(studentId, week, slot, sess, phase, slotNum, isExtra, student
     return isPast
       ? `<div class="slot-card sc-warning" style="align-items:center;padding:11px 16px">
            <div style="flex:1">
-             <span style="font-size:13px;font-weight:700;color:#92400E">âš  ${label} â€” Not recorded</span>
+             <span style="font-size:13px;font-weight:700;color:#92400E">Not recorded</span>
              <span style="font-size:12px;color:#B45309;margin-left:8px">Did this session happen?</span>
            </div>
            <button class="btn btn-xs" style="background:#F59E0B;color:white;font-weight:600" onclick="openSessionForm('${studentId}',${week},${slot})">Log Now</button>
          </div>`
       : `<div class="slot-card sc-empty" style="align-items:center;padding:11px 16px">
-           <span style="font-size:13px;color:var(--gray-400);flex:1">${label} â€” not yet logged</span>
+           <span style="font-size:13px;color:var(--gray-400);flex:1">not yet logged</span>
            <button class="btn btn-secondary btn-xs" onclick="openSessionForm('${studentId}',${week},${slot})">Log Session</button>
          </div>`;
   }
 
-  const statusLabel = { completed: 'âœ“ Completed', missed: 'âœ• Missed', rescheduling: 'â†© Rescheduling', noshow: 'âœ“ Counted as Attended' }[sess.status] || sess.status;
+  const statusLabel = { completed: 'Completed', missed: 'Missed', rescheduling: 'Rescheduling', noshow: 'Counted as Attended' }[sess.status] || sess.status;
 
   // Who missed + notice pill (for non-completed sessions)
   let missedMeta = '';
   if (sess.status === 'missed' || sess.status === 'rescheduling' || sess.status === 'noshow') {
-    const byLabel = sess.missedBy === 'coach' ? 'ðŸ§‘â€ðŸ« Coach missed' : 'ðŸŽ“ Student missed';
+    const byLabel = sess.missedBy === 'coach' ? 'Coach missed' : 'Student missed';
     let noticeChip = '';
     if (sess.missedBy === 'student') {
       noticeChip = sess.status === 'rescheduling'
-        ? `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:99px;background:#DBEAFE;color:#1E40AF">âœ… 24hr notice given</span>`
-        : `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:99px;background:#FEE2E2;color:#991B1B">âŒ No 24hr notice</span>`;
+        ? `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:99px;background:#DBEAFE;color:#1E40AF">24hr notice given</span>`
+        : `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:99px;background:#FEE2E2;color:#991B1B">No 24hr notice</span>`;
     }
     missedMeta = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">
       <span style="font-size:12px;font-weight:600;color:var(--gray-600)">${byLabel}</span>
@@ -5211,19 +5217,19 @@ function buildSlot(studentId, week, slot, sess, phase, slotNum, isExtra, student
       <div class="slot-main">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:${(missedMeta || notesHTML.trim()) ? '10px' : '0'};flex-wrap:wrap">
           <span class="slot-badge sb-${sess.status}">${statusLabel}</span>
-          ${!hideDateChip && sess.date ? `<span class="date-chip dc-${sess.status}">ðŸ“… ${new Date(sess.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })} Â· ${fmtDate(sess.date)}</span>` : ''}
-          ${sess.duration && sess.status !== 'rescheduling' ? `<span style="font-size:12px;color:var(--gray-500)">â± ${sess.duration} min</span>` : ''}
+          ${!hideDateChip && sess.date ? `<span class="date-chip dc-${sess.status}">${new Date(sess.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })} - ${fmtDate(sess.date)}</span>` : ''}
+          ${sess.duration && sess.status !== 'rescheduling' ? `<span style="font-size:12px;color:var(--gray-500)">${sess.duration} min</span>` : ''}
           ${(() => { const c = sess.coach || (studentObj ? getCoachOnDate(studentObj, sess.date) : '') || ''; return c ? `<span style="font-size:12px;color:var(--gray-500)">Coach: <strong>${esc(c)}</strong></span>` : ''; })()}
           ${(sess.status === 'completed' || sess.status === 'noshow') && parseFloat(sess.duration) > 0 && parseFloat(sess.duration) < 60
-            ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D">âš  ${Math.round(parseFloat(sess.duration)/60*10)/10} session</span>`
+            ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D">${Math.round(parseFloat(sess.duration)/60*10)/10} session</span>`
             : ''}
           <span style="font-size:11px;color:var(--gray-400)">${label}</span>
         </div>
         ${missedMeta}${notesHTML}
       </div>
       <div class="slot-actions">
-        <button class="btn btn-xs" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;font-weight:600" onclick="openSessionForm('${studentId}',${week},${slot},'${sess.id}',null,${programIdx !== null ? programIdx : 'null'})">âœ Edit</button>
-        <button class="btn btn-xs" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;font-weight:600" onclick="askDeleteSession('${studentId}','${sess.id}',${programIdx !== null ? programIdx : 'null'})">ðŸ—‘ Delete</button>
+        <button class="btn btn-xs" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;font-weight:600" onclick="openSessionForm('${studentId}',${week},${slot},'${sess.id}',null,${programIdx !== null ? programIdx : 'null'})">Edit</button>
+        <button class="btn btn-xs" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;font-weight:600" onclick="askDeleteSession('${studentId}','${sess.id}',${programIdx !== null ? programIdx : 'null'})">Delete</button>
       </div>
     </div>`;
 }
@@ -5253,7 +5259,7 @@ function toggleCheck(studentId, key, val) {
 function populateCoachSelect(selectedValue = '') {
   const sel = document.getElementById('f-coach');
   const coaches = getSelectableCoachNames();
-  sel.innerHTML = '<option value="">Select coachâ€¦</option>' +
+  sel.innerHTML = '<option value="">Select...</option>' +
     coaches.map(name => `<option value="${esc(name)}" ${name === selectedValue ? 'selected' : ''}>${esc(name)}</option>`).join('');
 }
 
@@ -5410,8 +5416,8 @@ function openSessionForm(studentId, week, slot, editId = null, defaultDate = nul
   const spw0 = s0 ? Logic.spw(s0) : 1;
   const sessionLabel = slot > spw0 ? 'Extra Session' : `Session ${slot}`;
   document.getElementById('session-modal-title').textContent = editId
-    ? `Edit â€” Week ${week}, ${sessionLabel}`
-    : `Log â€” Week ${week}, ${sessionLabel}`;
+    ? `Edit - Week ${week}, ${sessionLabel}`
+    : `Log - Week ${week}, ${sessionLabel}`;
 
   if (editId) {
     const sess = getActiveSessions(studentId, programIdx).find(x => x.id === editId);
@@ -5479,10 +5485,10 @@ function onNoticeChange() {
   const el = document.getElementById('notice-outcome');
   if (notice === 'yes') {
     el.style.cssText = 'display:block;padding:12px 14px;border-radius:8px;font-size:13px;background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF;margin-bottom:12px';
-    el.innerHTML = 'â†© <strong>Marked for Rescheduling</strong> â€” Student gave 24hr notice. This session will not count as missed and will be rescheduled.';
+    el.innerHTML = '<strong>Marked for Rescheduling</strong> - Student gave 24hr notice. This session will not count as missed and will be rescheduled.';
   } else if (notice === 'no') {
     el.style.cssText = 'display:block;padding:12px 14px;border-radius:8px;font-size:13px;background:#ECFDF5;border:1px solid #6EE7B7;color:#065F46;margin-bottom:12px';
-    el.innerHTML = 'âœ“ <strong>Counted as Attended</strong> â€” No 24hr notice was given. This session will be counted as completed with a note.';
+    el.innerHTML = '<strong>Counted as Attended</strong> - No 24hr notice was given. This session will be counted as completed with a note.';
   }
   el.style.display = notice ? 'block' : 'none';
   // Notes required only when student gave notice (coach was informed of reason)
@@ -5496,7 +5502,7 @@ document.querySelectorAll('input[name="sstatus"]').forEach(r => r.addEventListen
 
 function showFormError(msg, fieldId = null) {
   const el = document.getElementById('session-form-error');
-  el.textContent = 'âš  ' + msg;
+  el.textContent = 'Warning: ' + msg;
   el.style.display = 'block';
   el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   // Highlight the specific field
@@ -5527,7 +5533,7 @@ document.getElementById('btn-save-session').addEventListener('click', () => {
 
   if (!date) { showFormError('Please enter the session date.', 's-date'); return; }
   if (rawStatus === 'completed' && (!duration || parseFloat(duration) <= 0)) { showFormError('Please enter the session duration in minutes.', 's-duration'); return; }
-  if (!rawStatus) { showFormError('Please select a session status â€” Completed or Missed.'); return; }
+  if (!rawStatus) { showFormError('Please select a session status - Completed or Missed.'); return; }
   if (rawStatus === 'completed' && !topic) { showFormError('Please enter the topic covered in this session.', 's-topic'); return; }
   if (rawStatus === 'completed' && !notes) { showFormError('Please add session notes before saving.', 's-notes'); return; }
 
@@ -5550,7 +5556,7 @@ document.getElementById('btn-save-session').addEventListener('click', () => {
   let missedBy = null;
   if (rawStatus === 'missed') {
     missedBy = document.querySelector('input[name="missed-by"]:checked')?.value;
-    if (!missedBy) { showFormError('Please select who missed the session â€” Coach or Student.'); return; }
+    if (!missedBy) { showFormError('Please select who missed the session - Coach or Student.'); return; }
     if (missedBy === 'coach') {
       const reason = document.getElementById('s-reason').value.trim();
       if (!reason) { showFormError('Please provide a reason for the missed session.', 's-reason'); return; }
@@ -5672,7 +5678,7 @@ function openChangeCoach(studentId) {
   const coachNames = getSelectableCoachNames();
 
   const sel = document.getElementById('cc-coach');
-  sel.innerHTML = '<option value="">Select new coachâ€¦</option>' +
+  sel.innerHTML = '<option value="">Select...</option>' +
     coachNames.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join('');
   document.getElementById('cc-date').value = localDateStr(new Date());
   const err = document.getElementById('cc-error');
@@ -5685,7 +5691,7 @@ document.getElementById('btn-save-coach-change').addEventListener('click', () =>
   const newCoach = document.getElementById('cc-coach').value;
   const effectiveDate = document.getElementById('cc-date').value;
   const err = document.getElementById('cc-error');
-  const showErr = msg => { err.textContent = 'âš  ' + msg; err.style.display = 'block'; };
+  const showErr = msg => { err.textContent = 'Warning: ' + msg; err.style.display = 'block'; };
   if (!newCoach)       { showErr('Please select a coach.'); return; }
   if (!effectiveDate)  { showErr('Please enter an effective date.'); return; }
 
@@ -5736,7 +5742,7 @@ document.getElementById('btn-save-coach-entry').addEventListener('click', () => 
   const newCoach = document.getElementById('ece-coach').value;
   const newDate  = document.getElementById('ece-date').value;
   const err = document.getElementById('ece-error');
-  const showErr = msg => { err.textContent = 'âš  ' + msg; err.style.display = 'block'; };
+  const showErr = msg => { err.textContent = 'Warning: ' + msg; err.style.display = 'block'; };
   if (!newCoach) { showErr('Please select a coach.'); return; }
   if (!newDate)  { showErr('Please enter a date.'); return; }
 
@@ -5790,8 +5796,8 @@ function buildStudentPauseList(s) {
       ? null
       : Math.round((new Date(p.endDate + 'T00:00:00') - new Date(p.startDate + 'T00:00:00')) / 86400000) + 1;
     const dateText = isIndefinite
-      ? `${fmtDate(p.startDate)} â†’ Indefinite`
-      : `${fmtDate(p.startDate)} â†’ ${fmtDate(p.endDate)}`;
+      ? `${fmtDate(p.startDate)} -> Indefinite`
+      : `${fmtDate(p.startDate)} -> ${fmtDate(p.endDate)}`;
     const durationText = isIndefinite
       ? 'No return date'
       : `${days} day${days !== 1 ? 's' : ''}`;
@@ -5802,7 +5808,7 @@ function buildStudentPauseList(s) {
         ${p.reason ? `<div style="font-size:12px;color:#B45309;margin-top:2px">${esc(p.reason)}</div>` : ''}
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
-        <button class="btn btn-xs" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE" onclick="openPauseForm('${s.id}','${p.id}')">âœ Edit</button>
+        <button class="btn btn-xs" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE" onclick="openPauseForm('${s.id}','${p.id}')">Edit</button>
         <button class="btn btn-xs" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA" onclick="deletePause('${s.id}','${p.id}')">Remove</button>
       </div>
     </div>`;
@@ -5815,17 +5821,17 @@ function buildPauseRow(pause) {
   const pe = isIndefinite ? null : new Date(pause.endDate + 'T00:00:00');
   const days = isIndefinite ? null : Math.round((pe - ps) / 86400000) + 1;
   const durationText = isIndefinite ? 'No return date' : `${days} day${days!==1?'s':''}`;
-  const dateText = isIndefinite ? `${fmtShort(ps)} onward` : `${fmtShort(ps)} â€“ ${fmtShort(pe)}`;
+  const dateText = isIndefinite ? `${fmtShort(ps)} onward` : `${fmtShort(ps)} - ${fmtShort(pe)}`;
   return `
     <div class="week-row" style="background:#FEF2F2;">
       <div class="wk-left" style="background:#FEE2E2;border-right-color:#FECACA">
-        <div class="wk-num" style="color:#991B1B;font-size:13px">â¸ Not Counted</div>
+        <div class="wk-num" style="color:#991B1B;font-size:13px">Not Counted</div>
         <div class="wk-meta" style="margin-top:4px;color:#B91C1C">${durationText}</div>
         <div style="font-size:13px;font-weight:700;color:#B91C1C;margin-top:2px">${dateText}</div>
       </div>
       <div class="wk-right" style="display:flex;align-items:center;gap:12px">
         <div style="flex:1">
-          <div style="font-size:16px;font-weight:800;color:#B91C1C">â¸ Week not counted â€” Program was paused</div>
+          <div style="font-size:16px;font-weight:800;color:#B91C1C">Week not counted - Program was paused</div>
           ${pause.reason ? `<div style="font-size:12px;color:#DC2626;margin-top:3px">${esc(pause.reason)}</div>` : ''}
         </div>
       </div>
@@ -5882,7 +5888,7 @@ document.getElementById('btn-save-pause').addEventListener('click', () => {
   const indefinite = document.getElementById('p-indefinite')?.checked || false;
   const reason    = document.getElementById('p-reason').value.trim();
   const err = document.getElementById('pause-form-error');
-  const showErr = msg => { err.textContent = 'âš  ' + msg; err.style.display = 'block'; };
+  const showErr = msg => { err.textContent = 'Warning: ' + msg; err.style.display = 'block'; };
   if (!startDate) { showErr('Please enter the pause start date.'); return; }
   if (!indefinite && !endDate)   { showErr('Please enter the pause end date or select Indefinite pause.'); return; }
   if (!indefinite && endDate < startDate) { showErr('End date must be on or after the start date.'); return; }
@@ -6007,7 +6013,7 @@ function saveEOP(studentId, programIdx) {
   }
   DB.upsert(s);
   const btn = document.getElementById(`eop-save-btn-${programIdx}`);
-  if (btn) { const orig = btn.textContent; btn.textContent = 'âœ“ Saved!'; setTimeout(() => btn.textContent = orig, 1500); }
+  if (btn) { const orig = btn.textContent; btn.textContent = 'Saved!'; setTimeout(() => btn.textContent = orig, 1500); }
 }
 
 
