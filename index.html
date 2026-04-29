@@ -1259,7 +1259,9 @@ function startSync() {
     const data = snapshot.exists ? snapshot.data() : {};
     _cache.deletedCoachNames = data.deletedCoachNames || [];
     _cache.backupLastDownloaded = data.backupLastDownloaded || '';
+    _cache.guideContent = normalizeGuideContent(data.guideContent || null);
     if (activeView === 'download') renderDownloadView();
+    else if (activeView === 'guide') renderGuideView();
   }, console.error));
 
   // Coach logins â€” keyed by coachName for quick lookup in the card
@@ -1453,7 +1455,7 @@ The existing Firebase password stays the same. Ask the coach to sign out and sig
 // â”€â”€â”€ DATABASE (Firestore-backed, cache-first) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Cache is kept in sync by onSnapshot listeners; all reads are
 // synchronous against the cache; writes are fire-and-forget to Firestore.
-const _cache = { students: [], coaches: [], deletedCoachNames: [], backupLastDownloaded: '' };
+const _cache = { students: [], coaches: [], deletedCoachNames: [], backupLastDownloaded: '', guideContent: null };
 
 const DB = {
   all() {
@@ -1720,6 +1722,8 @@ let activeTab = 'students';
 let activeView = 'dashboard';
 let activeStudentId = null;
 let guideMode = 'admin';
+let guideEditMode = false;
+let guideDraft = null;
 let coachSearchTerm = '';
 let coachMonthFilter = '';
 let coachDateFrom = '';
@@ -3092,6 +3096,67 @@ function getWorkbookImportRows(workbook, sheetName = '') {
   }).map(normalizeImportRow);
 }
 
+function ensureLegacyImportedProgram(store, number) {
+  if (!store[number]) {
+    store[number] = {
+      number,
+      programType: '',
+      totalSessionsHint: null,
+      completedSessionsHint: null,
+      remainingSessionsHint: null,
+      maxDay: 0,
+      firstDate: '',
+      lastDate: '',
+      sessions: [],
+      pauses: []
+    };
+  }
+  return store[number];
+}
+
+function updateLegacyImportedProgramDates(meta, date) {
+  if (!meta || !date) return;
+  if (!meta.firstDate || date < meta.firstDate) meta.firstDate = date;
+  if (!meta.lastDate || date > meta.lastDate) meta.lastDate = date;
+}
+
+function importedIsoDaySpan(startDate, endDate) {
+  if (!startDate || !endDate) return 0;
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
+  return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+}
+
+function inferLegacyImportedProgramType(meta, fallbackType = 'regular-3m') {
+  const totalHint = parseImportedInteger(meta?.totalSessionsHint) || 0;
+  const maxDay = parseImportedInteger(meta?.maxDay) || 0;
+  const spanDays = importedIsoDaySpan(meta?.firstDate, meta?.lastDate);
+  const observedDays = Math.max(maxDay, spanDays);
+
+  if (observedDays >= 300 || totalHint >= 48) return 'regular-12m';
+  if (observedDays >= 150 || totalHint >= 24) return 'regular-6m';
+  if (observedDays > 0 || totalHint >= 12) return 'regular-3m';
+  return fallbackType || 'regular-3m';
+}
+
+function finalizeLegacyImportedProgram(meta, coachMap, fallbackType = 'regular-3m') {
+  if (!meta) return null;
+  meta.programType = meta.programType || inferLegacyImportedProgramType(meta, fallbackType);
+  const observedDays = Math.max(
+    parseImportedInteger(meta.maxDay) || 0,
+    importedIsoDaySpan(meta.firstDate, meta.lastDate)
+  );
+  const baseDays = PROGRAM_TYPES[meta.programType]?.days || 90;
+  meta.extraDays = Math.max(0, observedDays - baseDays);
+  meta.sessions = normalizeImportedSessionsForProgram({
+    programType: meta.programType,
+    programStartDate: meta.firstDate || '',
+    extraDays: meta.extraDays || 0
+  }, meta.sessions || [], coachMap);
+  return meta;
+}
+
 function buildStudentFromLegacyWorkbook(workbook) {
   const rows = getWorkbookImportRows(workbook);
   if (!rows.length) return null;
@@ -3110,7 +3175,7 @@ function buildStudentFromLegacyWorkbook(workbook) {
   const speakingLevel = cleanImportedNarrative(findLegacyRow('Speaking Level')?.[1]);
   const typeOfSpanish = cleanImportedNarrative(findLegacyRow('Type of Spanish')?.[1]);
   const goals = cleanImportedNarrative(findLegacyRow('Goals and Objectives', 'Goals')?.[1]);
-  const studyPlanText = cleanImportedNarrative(findLegacyRow('Study Plan', 'Study Plan Schedule Plan', 'Study Plan  Schedule Plan')?.[1]);
+  const studyPlanText = cleanImportedNarrative(findLegacyRow('Study Plan', 'Study Plan Schedule Plan', 'Study Plan  Schedule Plan', 'Training Schedule Plan', 'Training Schedule Plan ')?.[1]);
 
   const checklist = {
     studyPlanShared: false,
@@ -3128,25 +3193,56 @@ function buildStudentFromLegacyWorkbook(workbook) {
     });
   }
 
-  const sessions = [];
-  let maxDay = 0;
-  let startDate = '';
+  const programs = {};
+  let currentProgramNumber = 1;
+  ensureLegacyImportedProgram(programs, currentProgramNumber).programType = programType;
+
   rows.forEach(row => {
     const label = cleanImportedNarrative(row[0]);
+    if (!label) return;
+
+    const programMarker = parseImportedProgramNumber(label);
+    if (programMarker && /program/i.test(label)) {
+      currentProgramNumber = programMarker;
+      const meta = ensureLegacyImportedProgram(programs, currentProgramNumber);
+      if (!meta.programType) meta.programType = currentProgramNumber === 1 ? programType : '';
+      return;
+    }
+
+    const meta = ensureLegacyImportedProgram(programs, currentProgramNumber);
+    const normalizedLabel = normalizeImportKey(label);
+    if (normalizedLabel === 'program type') {
+      const typeHint = parseImportedProgramType(cleanImportedNarrative(row[1]));
+      if (typeHint) meta.programType = typeHint;
+      return;
+    }
+    if (normalizedLabel === 'total number of sessions') {
+      meta.totalSessionsHint = parseImportedInteger(row[1]) || meta.totalSessionsHint;
+      return;
+    }
+    if (normalizedLabel === 'sessions completed so far') {
+      meta.completedSessionsHint = parseImportedInteger(row[1]) || meta.completedSessionsHint;
+      return;
+    }
+    if (normalizedLabel === 'sessions left to complete') {
+      meta.remainingSessionsHint = parseImportedInteger(row[1]) || meta.remainingSessionsHint;
+      return;
+    }
+
     const dayMatch = label.match(/^day\s*(\d+)/i);
     if (!dayMatch) return;
 
     const dayNumber = parseInt(dayMatch[1], 10);
-    if (dayNumber > maxDay) maxDay = dayNumber;
+    if (dayNumber > meta.maxDay) meta.maxDay = dayNumber;
 
     const date = normalizeImportedDate(row[1]);
-    if (dayNumber === 1 && date) startDate = startDate || date;
+    updateLegacyImportedProgramDates(meta, date);
 
     const duration = cleanImportedNarrative(row[2]);
     const notes = cleanImportedNarrative(row[3]);
     if (!isLegacyImportedLoggedDuration(duration) || !date) return;
 
-    sessions.push({
+    meta.sessions.push({
       id: uid(),
       week: '',
       slot: '',
@@ -3161,21 +3257,30 @@ function buildStudentFromLegacyWorkbook(workbook) {
       studentMissNotes: '',
       autoNote: ''
     });
-
-    if (!startDate) startDate = date;
   });
 
-  const extraDays = Math.max(0, maxDay - (PROGRAM_TYPES[programType]?.days || 90));
+  const programNumbers = Object.keys(programs).map(Number).filter(Boolean).sort((a, b) => a - b);
+  if (!programNumbers.length) return null;
+  programNumbers.forEach((number, index) => {
+    const previousType = index > 0 ? programs[programNumbers[index - 1]]?.programType : programType;
+    finalizeLegacyImportedProgram(programs[number], coachMap, previousType || programType || 'regular-3m');
+  });
+
+  const baseProgramNumber = programNumbers[0];
+  const baseMeta = programs[baseProgramNumber];
+  const baseProgramType = baseMeta?.programType || programType;
+  const extraDays = baseMeta?.extraDays || 0;
+  const startDate = baseMeta?.firstDate || '';
   const existing = _cache.students.find(student =>
     accessKey(student.fullName || student.name) === accessKey(studentName)
   ) || null;
   const student = {
     id: existing?.id || uid(),
     fullName: studentName,
-    programType,
+    programType: baseProgramType,
     speakingLevel,
     typeOfSpanish,
-    programNum: '1',
+    programNum: String(baseProgramNumber),
     coach,
     programStartPending: !startDate,
     programStartDate: startDate,
@@ -3185,13 +3290,24 @@ function buildStudentFromLegacyWorkbook(workbook) {
     withdrawn: false,
     withdrawalDate: '',
     withdrawalReason: '',
-    sessions,
+    sessions: baseMeta?.sessions || [],
     pauses: [],
     extraDays,
     checklist,
     coachHistory: coach && startDate ? [{ coach, startDate }] : [],
     eop: existing?.eop || { strengths: '', focusAreas: '' },
-    renewals: []
+    renewals: programNumbers.slice(1).map(number => {
+      const meta = programs[number];
+      return {
+        id: uid(),
+        startDate: meta?.firstDate || '',
+        startDatePending: !meta?.firstDate,
+        programType: meta?.programType || baseProgramType,
+        sessions: meta?.sessions || [],
+        pauses: [],
+        extraDays: meta?.extraDays || 0
+      };
+    })
   };
 
   return finalizeImportedStudentRecord(student);
@@ -3589,7 +3705,187 @@ const GUIDE_CONTENT = {
 };
 
 function setGuideMode(mode) {
+  if (!isAdminUser()) mode = 'coach';
   guideMode = mode === 'coach' ? 'coach' : 'admin';
+  renderGuideView();
+}
+
+function cloneGuideContent(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function guideText(obj, key, fallback = '') {
+  if (obj && Object.prototype.hasOwnProperty.call(obj, key)) return String(obj[key] ?? '');
+  return fallback;
+}
+
+function normalizeGuideRoleContent(defaultRole, rawRole) {
+  const fallback = GUIDE_CONTENT[defaultRole];
+  if (!rawRole || typeof rawRole !== 'object') return cloneGuideContent(fallback);
+  return {
+    title: guideText(rawRole, 'title', fallback.title),
+    subtitle: guideText(rawRole, 'subtitle', fallback.subtitle),
+    highlights: Array.isArray(rawRole.highlights)
+      ? rawRole.highlights.map(card => ({
+          label: guideText(card, 'label', ''),
+          value: guideText(card, 'value', '')
+        }))
+      : cloneGuideContent(fallback.highlights),
+    sections: Array.isArray(rawRole.sections)
+      ? rawRole.sections.map(section => ({
+          title: guideText(section, 'title', ''),
+          items: Array.isArray(section.items)
+            ? section.items.map(item => ({
+                title: guideText(item, 'title', ''),
+                body: guideText(item, 'body', '')
+              }))
+            : []
+        }))
+      : cloneGuideContent(fallback.sections)
+  };
+}
+
+function normalizeGuideContent(raw) {
+  return {
+    admin: normalizeGuideRoleContent('admin', raw && raw.admin),
+    coach: normalizeGuideRoleContent('coach', raw && raw.coach)
+  };
+}
+
+function getGuideContent() {
+  return normalizeGuideContent(_cache.guideContent || GUIDE_CONTENT);
+}
+
+function ensureGuideDraft() {
+  if (!guideDraft) guideDraft = cloneGuideContent(getGuideContent());
+  return guideDraft;
+}
+
+function ensureGuideDraftRole(role) {
+  const draft = ensureGuideDraft();
+  if (!draft[role]) draft[role] = cloneGuideContent(GUIDE_CONTENT[role]);
+  if (!Array.isArray(draft[role].highlights)) draft[role].highlights = [];
+  if (!Array.isArray(draft[role].sections)) draft[role].sections = [];
+  return draft[role];
+}
+
+function startGuideEdit(role = guideMode) {
+  if (!isAdminUser()) return;
+  guideMode = role === 'coach' ? 'coach' : 'admin';
+  guideDraft = cloneGuideContent(getGuideContent());
+  guideEditMode = true;
+  renderGuideView();
+}
+
+function cancelGuideEdit() {
+  guideEditMode = false;
+  guideDraft = null;
+  renderGuideView();
+}
+
+async function saveGuideDraft() {
+  if (!isAdminUser()) return;
+  const btn = document.getElementById('btn-save-guide');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+  }
+  try {
+    const normalized = normalizeGuideContent(ensureGuideDraft());
+    await fsdb.collection('meta').doc('app').set({ guideContent: normalized }, { merge: true });
+    _cache.guideContent = normalized;
+    guideEditMode = false;
+    guideDraft = null;
+    renderGuideView();
+  } catch (err) {
+    console.error('Failed to save guide content', err);
+    alert('Unable to save the user guide right now. Please try again.');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Save Changes';
+    }
+  }
+}
+
+function resetGuideDraftRole(role) {
+  if (!isAdminUser()) return;
+  if (!confirm(`Reset the ${role === 'coach' ? 'Coach' : 'Admin'} guide back to the default version?`)) return;
+  const draft = ensureGuideDraft();
+  draft[role] = cloneGuideContent(GUIDE_CONTENT[role]);
+  renderGuideView();
+}
+
+function setGuideDraftField(role, field, value) {
+  if (!isAdminUser()) return;
+  const draftRole = ensureGuideDraftRole(role);
+  draftRole[field] = value;
+}
+
+function setGuideDraftHighlight(role, index, field, value) {
+  if (!isAdminUser()) return;
+  const draftRole = ensureGuideDraftRole(role);
+  if (!draftRole.highlights[index]) draftRole.highlights[index] = { label: '', value: '' };
+  draftRole.highlights[index][field] = value;
+}
+
+function addGuideDraftHighlight(role) {
+  if (!isAdminUser()) return;
+  const draftRole = ensureGuideDraftRole(role);
+  draftRole.highlights.push({ label: '', value: '' });
+  renderGuideView();
+}
+
+function removeGuideDraftHighlight(role, index) {
+  if (!isAdminUser()) return;
+  const draftRole = ensureGuideDraftRole(role);
+  draftRole.highlights.splice(index, 1);
+  renderGuideView();
+}
+
+function setGuideDraftSectionTitle(role, sectionIndex, value) {
+  if (!isAdminUser()) return;
+  const draftRole = ensureGuideDraftRole(role);
+  if (!draftRole.sections[sectionIndex]) draftRole.sections[sectionIndex] = { title: '', items: [] };
+  draftRole.sections[sectionIndex].title = value;
+}
+
+function addGuideDraftSection(role) {
+  if (!isAdminUser()) return;
+  const draftRole = ensureGuideDraftRole(role);
+  draftRole.sections.push({ title: '', items: [] });
+  renderGuideView();
+}
+
+function removeGuideDraftSection(role, sectionIndex) {
+  if (!isAdminUser()) return;
+  const draftRole = ensureGuideDraftRole(role);
+  draftRole.sections.splice(sectionIndex, 1);
+  renderGuideView();
+}
+
+function setGuideDraftItem(role, sectionIndex, itemIndex, field, value) {
+  if (!isAdminUser()) return;
+  const draftRole = ensureGuideDraftRole(role);
+  if (!draftRole.sections[sectionIndex]) draftRole.sections[sectionIndex] = { title: '', items: [] };
+  if (!Array.isArray(draftRole.sections[sectionIndex].items)) draftRole.sections[sectionIndex].items = [];
+  if (!draftRole.sections[sectionIndex].items[itemIndex]) draftRole.sections[sectionIndex].items[itemIndex] = { title: '', body: '' };
+  draftRole.sections[sectionIndex].items[itemIndex][field] = value;
+}
+
+function addGuideDraftItem(role, sectionIndex) {
+  if (!isAdminUser()) return;
+  const draftRole = ensureGuideDraftRole(role);
+  if (!draftRole.sections[sectionIndex]) draftRole.sections[sectionIndex] = { title: '', items: [] };
+  if (!Array.isArray(draftRole.sections[sectionIndex].items)) draftRole.sections[sectionIndex].items = [];
+  draftRole.sections[sectionIndex].items.push({ title: '', body: '' });
+  renderGuideView();
+}
+
+function removeGuideDraftItem(role, sectionIndex, itemIndex) {
+  if (!isAdminUser()) return;
+  const draftRole = ensureGuideDraftRole(role);
+  if (!draftRole.sections[sectionIndex] || !Array.isArray(draftRole.sections[sectionIndex].items)) return;
+  draftRole.sections[sectionIndex].items.splice(itemIndex, 1);
   renderGuideView();
 }
 
@@ -3598,7 +3894,7 @@ function renderGuideSection(section) {
     <section style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:20px;box-shadow:var(--shadow-sm)">
       <div style="font-size:16px;font-weight:800;color:var(--gray-800);margin-bottom:14px">${esc(section.title)}</div>
       <div style="display:grid;gap:12px">
-        ${(section.items || []).map(item => `
+        ${((section.items || []).length ? section.items : [{ title: 'No items yet', body: 'This section is still empty.' }]).map(item => `
           <div style="padding:12px 14px;border:1px solid var(--gray-200);border-radius:8px;background:#FAFAFA">
             <div style="font-size:13px;font-weight:800;color:var(--gray-800);margin-bottom:4px">${esc(item.title)}</div>
             <div style="font-size:13px;line-height:1.6;color:var(--gray-600)">${esc(item.body)}</div>
@@ -3612,10 +3908,127 @@ function renderGuideView() {
   const container = document.getElementById('guide-container');
   if (!container) return;
   if (isCoachUser()) guideMode = 'coach';
+  if (!isAdminUser() && guideEditMode) {
+    guideEditMode = false;
+    guideDraft = null;
+  }
   if (guideMode !== 'coach' && guideMode !== 'admin') guideMode = isCoachUser() ? 'coach' : 'admin';
-  const guide = GUIDE_CONTENT[guideMode] || GUIDE_CONTENT.admin;
+  const guideSource = guideEditMode && isAdminUser() ? ensureGuideDraft() : getGuideContent();
+  const guide = guideSource[guideMode] || guideSource.admin;
   const canSwitchRole = isAdminUser();
   const roleBadge = guideMode === 'admin' ? 'Admin view' : 'Coach view';
+  const actionsHtml = canSwitchRole ? (guideEditMode
+    ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+         <button id="btn-save-guide" class="btn btn-primary" onclick="saveGuideDraft()">Save Changes</button>
+         <button class="btn btn-secondary" onclick="cancelGuideEdit()">Cancel</button>
+         <button class="btn btn-secondary" style="border-color:#FCD34D;color:#92400E;background:#FFFBEB" onclick="resetGuideDraftRole('${guideMode}')">Reset This Guide</button>
+       </div>`
+    : `<button class="btn btn-primary" onclick="startGuideEdit('${guideMode}')">Edit This Guide</button>`)
+    : `<div style="padding:8px 12px;border-radius:999px;background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;font-size:12px;font-weight:800">Coach access guide</div>`;
+  const highlightsHtml = (guide.highlights || []).length
+    ? (guide.highlights || []).map(card => `
+        <div style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:16px;box-shadow:var(--shadow-sm)">
+          <div style="font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">${esc(card.label)}</div>
+          <div style="font-size:13px;line-height:1.6;color:var(--gray-700);margin-top:8px">${esc(card.value)}</div>
+        </div>
+      `).join('')
+    : `<div style="grid-column:1 / -1;background:white;border:1px dashed var(--gray-300);border-radius:8px;padding:16px;color:var(--gray-500);font-size:13px">No quick guide cards yet.</div>`;
+  const sectionsHtml = (guide.sections || []).length
+    ? (guide.sections || []).map(renderGuideSection).join('')
+    : `<section style="background:white;border:1px dashed var(--gray-300);border-radius:8px;padding:20px;color:var(--gray-500);font-size:13px">No guide sections yet.</section>`;
+  const editorHtml = guideEditMode && canSwitchRole ? `
+    <div style="display:grid;gap:16px">
+      <section style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:20px;box-shadow:var(--shadow-sm)">
+        <div style="font-size:16px;font-weight:800;color:var(--gray-800);margin-bottom:14px">Guide Header</div>
+        <div style="display:grid;gap:14px">
+          <div>
+            <label style="display:block;font-size:12px;font-weight:800;color:var(--gray-600);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Guide Title</label>
+            <input type="text" value="${esc(guide.title || '')}" oninput="setGuideDraftField('${guideMode}','title',this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:800;color:var(--gray-600);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Subtitle</label>
+            <textarea rows="3" oninput="setGuideDraftField('${guideMode}','subtitle',this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;resize:vertical">${esc(guide.subtitle || '')}</textarea>
+          </div>
+        </div>
+      </section>
+      <section style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:20px;box-shadow:var(--shadow-sm)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+          <div>
+            <div style="font-size:16px;font-weight:800;color:var(--gray-800)">Quick Guide Cards</div>
+            <div style="font-size:13px;color:var(--gray-500);margin-top:4px">These cards appear near the top of the guide.</div>
+          </div>
+          <button class="btn btn-secondary" onclick="addGuideDraftHighlight('${guideMode}')">+ Add Card</button>
+        </div>
+        <div style="display:grid;gap:14px">
+          ${(guide.highlights || []).map((card, index) => `
+            <div style="border:1px solid var(--gray-200);border-radius:8px;padding:14px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px">
+                <div style="font-size:13px;font-weight:800;color:var(--gray-700)">Card ${index + 1}</div>
+                <button class="btn btn-secondary btn-xs" style="border-color:#FECACA;color:#B91C1C;background:#FEF2F2" onclick="removeGuideDraftHighlight('${guideMode}',${index})">Remove</button>
+              </div>
+              <div style="display:grid;gap:12px">
+                <div>
+                  <label style="display:block;font-size:11px;font-weight:800;color:var(--gray-600);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Label</label>
+                  <input type="text" value="${esc(card.label || '')}" oninput="setGuideDraftHighlight('${guideMode}',${index},'label',this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box">
+                </div>
+                <div>
+                  <label style="display:block;font-size:11px;font-weight:800;color:var(--gray-600);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Text</label>
+                  <textarea rows="3" oninput="setGuideDraftHighlight('${guideMode}',${index},'value',this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;resize:vertical">${esc(card.value || '')}</textarea>
+                </div>
+              </div>
+            </div>
+          `).join('') || `<div style="padding:16px;border:1px dashed var(--gray-300);border-radius:8px;color:var(--gray-500);font-size:13px">No cards yet. Use Add Card to create one.</div>`}
+        </div>
+      </section>
+      <section style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:20px;box-shadow:var(--shadow-sm)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+          <div>
+            <div style="font-size:16px;font-weight:800;color:var(--gray-800)">Guide Sections</div>
+            <div style="font-size:13px;color:var(--gray-500);margin-top:4px">Add, remove, or rewrite the main sections of this guide.</div>
+          </div>
+          <button class="btn btn-secondary" onclick="addGuideDraftSection('${guideMode}')">+ Add Section</button>
+        </div>
+        <div style="display:grid;gap:16px">
+          ${(guide.sections || []).map((section, sectionIndex) => `
+            <div style="border:1px solid var(--gray-200);border-radius:8px;padding:16px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+                <div style="font-size:13px;font-weight:800;color:var(--gray-700)">Section ${sectionIndex + 1}</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="btn btn-secondary btn-xs" onclick="addGuideDraftItem('${guideMode}',${sectionIndex})">+ Add Item</button>
+                  <button class="btn btn-secondary btn-xs" style="border-color:#FECACA;color:#B91C1C;background:#FEF2F2" onclick="removeGuideDraftSection('${guideMode}',${sectionIndex})">Remove Section</button>
+                </div>
+              </div>
+              <div style="display:grid;gap:14px">
+                <div>
+                  <label style="display:block;font-size:11px;font-weight:800;color:var(--gray-600);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Section Title</label>
+                  <input type="text" value="${esc(section.title || '')}" oninput="setGuideDraftSectionTitle('${guideMode}',${sectionIndex},this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box">
+                </div>
+                <div style="display:grid;gap:12px">
+                  ${(section.items || []).map((item, itemIndex) => `
+                    <div style="padding:14px;border:1px solid var(--gray-200);border-radius:8px;background:#FAFAFA">
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+                        <div style="font-size:12px;font-weight:800;color:var(--gray-600)">Item ${itemIndex + 1}</div>
+                        <button class="btn btn-secondary btn-xs" style="border-color:#FECACA;color:#B91C1C;background:#FEF2F2" onclick="removeGuideDraftItem('${guideMode}',${sectionIndex},${itemIndex})">Remove</button>
+                      </div>
+                      <div style="display:grid;gap:12px">
+                        <div>
+                          <label style="display:block;font-size:11px;font-weight:800;color:var(--gray-600);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Item Title</label>
+                          <input type="text" value="${esc(item.title || '')}" oninput="setGuideDraftItem('${guideMode}',${sectionIndex},${itemIndex},'title',this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box">
+                        </div>
+                        <div>
+                          <label style="display:block;font-size:11px;font-weight:800;color:var(--gray-600);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Body</label>
+                          <textarea rows="4" oninput="setGuideDraftItem('${guideMode}',${sectionIndex},${itemIndex},'body',this.value)" style="width:100%;padding:10px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;resize:vertical">${esc(item.body || '')}</textarea>
+                        </div>
+                      </div>
+                    </div>
+                  `).join('') || `<div style="padding:16px;border:1px dashed var(--gray-300);border-radius:8px;color:var(--gray-500);font-size:13px">No items yet. Use Add Item to create one.</div>`}
+                </div>
+              </div>
+            </div>
+          `).join('') || `<div style="padding:16px;border:1px dashed var(--gray-300);border-radius:8px;color:var(--gray-500);font-size:13px">No sections yet. Use Add Section to build the guide.</div>`}
+        </div>
+      </section>
+    </div>` : '';
   container.innerHTML = `
     <div class="dashboard-header">
       <div>
@@ -3628,29 +4041,27 @@ function renderGuideView() {
         <div>
           <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">${esc(roleBadge)}</div>
           <div style="font-size:20px;font-weight:900;color:var(--gray-800);margin-top:4px">${esc(guide.title)}</div>
-          <div style="font-size:13px;line-height:1.6;color:var(--gray-600);margin-top:6px">This guide is embedded in the app so your team can check the workflow while working.</div>
+          <div style="font-size:13px;line-height:1.6;color:var(--gray-600);margin-top:6px">${guideEditMode && canSwitchRole ? 'Edit the guide below, then save your changes to update the in-app copy for the whole team.' : 'This guide is embedded in the app so your team can check the workflow while working.'}</div>
         </div>
-        ${canSwitchRole ? `
+        <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;justify-content:flex-end">
+          ${canSwitchRole ? `
           <div style="display:inline-flex;padding:4px;border:1px solid var(--gray-200);border-radius:10px;background:#F8FAFC;gap:4px">
             <button class="btn ${guideMode === 'admin' ? 'btn-primary' : 'btn-secondary'}" style="min-width:118px" onclick="setGuideMode('admin')">Admin Guide</button>
             <button class="btn ${guideMode === 'coach' ? 'btn-primary' : 'btn-secondary'}" style="min-width:118px" onclick="setGuideMode('coach')">Coach Guide</button>
           </div>
-        ` : `
-          <div style="padding:8px 12px;border-radius:999px;background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;font-size:12px;font-weight:800">Coach access guide</div>
-        `}
+          ` : ''}
+          ${actionsHtml}
+        </div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px">
-      ${(guide.highlights || []).map(card => `
-        <div style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:16px;box-shadow:var(--shadow-sm)">
-          <div style="font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">${esc(card.label)}</div>
-          <div style="font-size:13px;line-height:1.6;color:var(--gray-700);margin-top:8px">${esc(card.value)}</div>
-        </div>
-      `).join('')}
-    </div>
-    <div style="display:grid;gap:14px">
-      ${(guide.sections || []).map(renderGuideSection).join('')}
-    </div>`;
+    ${guideEditMode && canSwitchRole ? editorHtml : `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px">
+        ${highlightsHtml}
+      </div>
+      <div style="display:grid;gap:14px">
+        ${sectionsHtml}
+      </div>
+    `}`;
 }
 
 function renderCoachView() {
@@ -4823,6 +5234,9 @@ function buildAllProgramsLog(s) {
       const editTypeBtn = canManageStudent && prog.programIdx > 0
         ? `<button onclick="openChangeProgramType('${s.id}',${prog.programIdx})" title="Edit program type" style="background:none;border:1px solid #4B5563;color:#9CA3AF;font-size:11px;padding:2px 8px;border-radius:6px;cursor:pointer;margin-left:4px">Edit Type</button>`
         : '';
+      const deleteProgramBtn = canManageStudent && prog.programIdx > 0
+        ? `<button onclick="askDeleteProgram('${s.id}',${prog.programIdx})" title="Delete this program" style="background:none;border:1px solid #FCA5A5;color:#FCA5A5;font-size:11px;padding:2px 8px;border-radius:6px;cursor:pointer;margin-left:4px">Delete Program</button>`
+        : '';
       const collapseBtn = isCompleted
         ? `<button onclick="toggleProgramCollapse('${s.id}',${prog.programIdx})" style="margin-left:auto;background:none;border:1px solid #4B5563;color:#9CA3AF;font-size:11px;padding:2px 10px;border-radius:6px;cursor:pointer">${isCollapsed ? 'Show' : 'Hide'}</button>`
         : '';
@@ -4841,6 +5255,7 @@ function buildAllProgramsLog(s) {
         <span style="font-size:15px;font-weight:800;color:white;letter-spacing:.5px;text-transform:uppercase">${ordinal(programNum)} Program</span>
         <span style="font-size:12px;color:#9CA3AF;margin-left:10px">${startStatus}</span>${editDateBtn}
         ${editTypeBtn}
+        ${deleteProgramBtn}
         ${completedBadge}${currentBadge}
         ${collapseBtn}
       </div>`;
@@ -5984,6 +6399,33 @@ function askDeleteSession(studentId, sessionId, programIdx = null) {
   openModal('modal-confirm');
 }
 
+function askDeleteProgram(studentId, programIdx) {
+  if (!isAdminUser()) { alert('Only team users can delete later programs.'); return; }
+  if (!programIdx || programIdx <= 0) return;
+  const s = DB.get(studentId);
+  if (!s || !Array.isArray(s.renewals) || !s.renewals[programIdx - 1]) return;
+  pendingDeleteId = studentId;
+  pendingDeleteType = 'program';
+  pendingDeleteExtra = studentId;
+  pendingDeleteProgramIdx = programIdx;
+  document.getElementById('confirm-title').textContent = 'Delete Program';
+  document.getElementById('confirm-msg').textContent = `Remove ${getDisplayedProgramLabel(s, programIdx)} and all of its sessions, pauses, and summary data? This cannot be undone.`;
+  openModal('modal-confirm');
+}
+
+function deleteProgram(studentId, programIdx) {
+  if (!isAdminUser()) return;
+  if (!programIdx || programIdx <= 0) return;
+  const s = DB.get(studentId);
+  if (!s || !Array.isArray(s.renewals) || !s.renewals[programIdx - 1]) return;
+  s.renewals.splice(programIdx - 1, 1);
+  delete activeProgramCtx[studentId];
+  Object.keys(collapsedPrograms).forEach(key => {
+    if (key.startsWith(`${studentId}_`)) delete collapsedPrograms[key];
+  });
+  DB.upsert(s);
+}
+
 document.getElementById('btn-confirm').addEventListener('click', () => {
   if (pendingDeleteType === 'student') {
     if (!isAdminUser()) { closeModal('modal-confirm'); pendingDeleteId = pendingDeleteType = pendingDeleteExtra = pendingDeleteProgramIdx = null; return; }
@@ -5992,6 +6434,11 @@ document.getElementById('btn-confirm').addEventListener('click', () => {
     goDashboard();
   } else if (pendingDeleteType === 'session') {
     deleteActiveSession(pendingDeleteExtra, pendingDeleteId, pendingDeleteProgramIdx);
+    closeModal('modal-confirm');
+    renderStudent(pendingDeleteExtra);
+  } else if (pendingDeleteType === 'program') {
+    if (!isAdminUser()) { closeModal('modal-confirm'); pendingDeleteId = pendingDeleteType = pendingDeleteExtra = pendingDeleteProgramIdx = null; return; }
+    deleteProgram(pendingDeleteExtra, pendingDeleteProgramIdx);
     closeModal('modal-confirm');
     renderStudent(pendingDeleteExtra);
   }
