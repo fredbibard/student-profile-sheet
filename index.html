@@ -2451,12 +2451,16 @@ function renderAttendanceView() {
           return `<span title="${esc(entry.coach || '')}" style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;background:${colors[0]};color:${colors[1]};border:1px solid ${colors[2]};font-size:11px;font-weight:700;white-space:nowrap">${fmtDate(entry.date)} - ${esc(entry.label)}</span>`;
         }).join('');
       return `<tr style="border-bottom:1px solid var(--gray-200)">
-        <td style="padding:12px 14px;font-weight:700;color:var(--gray-800)"><button onclick="goStudent('${row.id}')" style="background:none;border:none;color:var(--gray-800);font:inherit;font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:2px;padding:0">${esc(row.name)}</button></td>
-        <td style="padding:12px 14px;color:var(--gray-600);font-size:13px">${esc(row.coach || '-')}</td>
-        <td style="padding:12px 14px;text-align:center;font-weight:800;color:#14532D">${row.attended}</td>
-        <td style="padding:12px 14px;text-align:center;font-weight:800;color:#92400E">${row.reschedule}</td>
-        <td style="padding:12px 14px;text-align:center;font-weight:800;color:#991B1B">${row.missed}</td>
-        <td style="padding:12px 14px"><div style="display:flex;gap:5px;flex-wrap:wrap">${entryChips}</div></td>
+        <td style="padding:12px 14px;font-weight:700;color:var(--gray-800);vertical-align:top;width:220px">
+          <button onclick="goStudent('${row.id}')" style="display:block;width:100%;text-align:left;line-height:1.35;background:none;border:none;color:var(--gray-800);font:inherit;font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:2px;padding:0">
+            ${esc(row.name)}
+          </button>
+        </td>
+        <td style="padding:12px 14px;color:var(--gray-600);font-size:13px;vertical-align:top;line-height:1.35;width:120px">${esc(row.coach || '-')}</td>
+        <td style="padding:12px 14px;text-align:center;font-weight:800;color:#14532D;vertical-align:top">${row.attended}</td>
+        <td style="padding:12px 14px;text-align:center;font-weight:800;color:#92400E;vertical-align:top">${row.reschedule}</td>
+        <td style="padding:12px 14px;text-align:center;font-weight:800;color:#991B1B;vertical-align:top">${row.missed}</td>
+        <td style="padding:12px 14px;vertical-align:top"><div style="display:flex;gap:5px;flex-wrap:wrap">${entryChips}</div></td>
       </tr>`;
     }).join('');
 
@@ -4893,13 +4897,13 @@ function renderDashboard() {
     const previousStudents = withMeta.filter(meta => !meta.isCurrentCoach);
     let filtersPlaced = false;
 
-    const buildCoachSection = (title, subtitle, items, emptyMessage) => {
+    const buildCoachSection = (title, subtitle, items, emptyMessage, marginTop = 0) => {
       const tableHtml = items.length
         ? buildTable(items, !filtersPlaced)
         : `<div style="background:white;border:1px solid var(--gray-200);border-radius:var(--radius);padding:18px 20px;color:var(--gray-500);box-shadow:var(--shadow-sm)">${emptyMessage}</div>`;
       if (items.length && !filtersPlaced) filtersPlaced = true;
 
-      return `<div style="margin-bottom:18px">
+      return `<div style="margin-top:${marginTop}px;margin-bottom:18px">
         <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap">
           <div>
             <div style="font-size:16px;font-weight:800;color:var(--gray-800)">${title}</div>
@@ -4922,7 +4926,8 @@ function renderDashboard() {
         'Previously Coached Students',
         'Students you coached before they were reassigned or moved on.',
         previousStudents,
-        'No previously coached students match the current filters.'
+        'No previously coached students match the current filters.',
+        16
       )}`;
   } catch(e) {
     const grid = document.getElementById('students-grid');
