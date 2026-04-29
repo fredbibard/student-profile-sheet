@@ -2911,6 +2911,127 @@ function cleanImportedNarrative(value) {
     .trim();
 }
 
+function getAvailableImportedCoachMap() {
+  const map = new Map();
+  DB.allCoaches().forEach(coach => {
+    const name = normalizeImportCell(coach?.name);
+    const key = accessKey(name);
+    if (key && !map.has(key)) map.set(key, name);
+  });
+  return map;
+}
+
+function resolveImportedCoachName(value, coachMap = null) {
+  const name = normalizeImportCell(value);
+  const key = accessKey(name);
+  if (!key) return '';
+  const available = coachMap || getAvailableImportedCoachMap();
+  return available.get(key) || '';
+}
+
+function normalizeImportedDurationMinutes(value, status = 'completed') {
+  if (status === 'rescheduling' || status === 'missed') return '';
+  if (status === 'noshow') return '60';
+  const raw = normalizeImportCell(value);
+  if (!raw) return status === 'completed' ? '60' : '';
+  const lower = raw.toLowerCase();
+  const match = lower.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return status === 'completed' ? '60' : '';
+  let amount = parseFloat(match[0]);
+  if (!Number.isFinite(amount) || amount <= 0) return status === 'completed' ? '60' : '';
+  if (/(hour|hours|hr|hrs)\b/.test(lower)) amount *= 60;
+  else if (!/(minute|minutes|min|mins)\b/.test(lower) && amount > 0 && amount <= 4) amount *= 60;
+  return String(Math.round(amount));
+}
+
+function normalizeImportedSessionsForProgram(programLike, sessions = [], coachMap = null) {
+  const proxy = {
+    programType: programLike?.programType || 'regular-3m',
+    programStartDate: programLike?.programStartDate || programLike?.startDate || '',
+    extraDays: programLike?.extraDays || 0,
+    sessions: []
+  };
+  const slotCounts = {};
+  return (Array.isArray(sessions) ? sessions : [])
+    .map((session, idx) => {
+      const next = {
+        ...session,
+        id: session?.id || uid(),
+        date: normalizeImportedDate(session?.date),
+        status: normalizeImportKey(session?.status) || session?.status || 'completed',
+        missedBy: normalizeImportKey(session?.missedBy),
+        coach: resolveImportedCoachName(session?.coach, coachMap),
+        duration: normalizeImportedDurationMinutes(session?.duration, normalizeImportKey(session?.status) || session?.status || 'completed'),
+        topic: normalizeImportCell(session?.topic),
+        notes: normalizeImportCell(session?.notes),
+        reason: normalizeImportCell(session?.reason),
+        studentMissNotes: normalizeImportCell(session?.studentMissNotes),
+        autoNote: normalizeImportCell(session?.autoNote),
+        week: parseImportedInteger(session?.week) || '',
+        slot: parseImportedInteger(session?.slot) || ''
+      };
+
+      if (proxy.programStartDate && next.date) {
+        const detectedWeek = getWeekFromDate(proxy, next.date);
+        if (detectedWeek) next.week = detectedWeek;
+      }
+
+      if (next.week) {
+        const weekKey = String(next.week);
+        if (next.slot) {
+          slotCounts[weekKey] = Math.max(slotCounts[weekKey] || 0, next.slot);
+        } else {
+          slotCounts[weekKey] = (slotCounts[weekKey] || 0) + 1;
+          next.slot = slotCounts[weekKey];
+        }
+      } else if (!next.slot) {
+        next.slot = idx + 1;
+      }
+
+      return next;
+    })
+    .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.week || 0) - (b.week || 0) || (a.slot || 0) - (b.slot || 0) || (a.id || '').localeCompare(b.id || ''));
+}
+
+function finalizeImportedStudentRecord(student = {}) {
+  const coachMap = getAvailableImportedCoachMap();
+  const next = normalizeStudentRecord(student);
+  next.coach = resolveImportedCoachName(next.coach, coachMap);
+  next.coachHistory = (next.coachHistory || [])
+    .map(entry => ({
+      ...entry,
+      coach: resolveImportedCoachName(entry?.coach, coachMap),
+      startDate: normalizeImportedDate(entry?.startDate)
+    }))
+    .filter(entry => entry.coach && entry.startDate)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+  if (!next.coachHistory.length && next.coach && next.programStartDate) {
+    next.coachHistory = [{ coach: next.coach, startDate: next.programStartDate }];
+  }
+
+  next.sessions = normalizeImportedSessionsForProgram({
+    programType: next.programType,
+    programStartDate: next.programStartDate,
+    extraDays: next.extraDays || 0
+  }, next.sessions, coachMap);
+
+  next.renewals = (next.renewals || []).map(renewal => ({
+    ...renewal,
+    startDate: normalizeImportedDate(renewal?.startDate),
+    startDatePending: renewal?.startDatePending === true,
+    programType: renewal?.programType || next.programType,
+    sessions: normalizeImportedSessionsForProgram({
+      programType: renewal?.programType || next.programType,
+      programStartDate: renewal?.startDate || '',
+      extraDays: renewal?.extraDays || 0
+    }, renewal?.sessions || [], coachMap),
+    pauses: Array.isArray(renewal?.pauses) ? renewal.pauses : []
+  }));
+
+  return normalizeStudentRecord(next);
+}
+
 function getWorkbookImportRows(workbook, sheetName = '') {
   const targetName = sheetName || workbook?.SheetNames?.[0];
   if (!targetName || !workbook?.Sheets?.[targetName]) return [];
@@ -3031,7 +3152,7 @@ function buildStudentFromLegacyWorkbook(workbook) {
     renewals: []
   };
 
-  return normalizeStudentRecord(student);
+  return finalizeImportedStudentRecord(student);
 }
 
 function buildStudentFromImportedWorkbook(workbook) {
@@ -3202,7 +3323,7 @@ function buildStudentFromImportedWorkbook(workbook) {
     student.coachHistory = [{ coach: student.coach, startDate: student.programStartDate }];
   }
 
-  return normalizeStudentRecord(student);
+  return finalizeImportedStudentRecord(student);
 }
 
 async function importStudentExcelFile(file) {
@@ -3230,18 +3351,6 @@ async function importStudentExcelFile(file) {
     const student = buildStudentFromImportedWorkbook(workbook);
 
     DB.upsert(student);
-
-    const coachNames = new Set();
-    if (student.coach) coachNames.add(student.coach);
-    (student.coachHistory || []).forEach(entry => { if (entry.coach) coachNames.add(entry.coach); });
-    getAllStudentSessions(student).forEach(sess => { if (sess.coach) coachNames.add(sess.coach); });
-    const existingCoachProfiles = DB.allCoaches().map(coach => coach?.name || '');
-    coachNames.forEach(name => {
-      if (!existingCoachProfiles.some(existing => accessKey(existing) === accessKey(name))) {
-        DB.upsertCoach({ id: uid(), name });
-        existingCoachProfiles.push(name);
-      }
-    });
 
     setStudentImportStatus(`Imported ${student.fullName} successfully.`, 'success');
     switchTab('students');
