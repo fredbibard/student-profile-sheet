@@ -400,6 +400,9 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
     <div class="nav-tab" data-tab="download" onclick="switchTab('download')">
       <span class="nav-tab-icon">⬇</span><span>Download</span>
     </div>
+    <div class="nav-tab" data-tab="guide" onclick="switchTab('guide')">
+      <span class="nav-tab-icon">ðŸ“˜</span><span>Guide</span>
+    </div>
   </nav>
 
   <main class="app-content">
@@ -441,6 +444,10 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
     <!-- DOWNLOAD VIEW -->
     <div id="view-download" class="view">
       <div class="container" id="download-container"></div>
+    </div>
+    <!-- GUIDE VIEW -->
+    <div id="view-guide" class="view">
+      <div class="container" id="guide-container"></div>
     </div>
   </main>
 </div>
@@ -1706,6 +1713,7 @@ const Logic = {
 let activeTab = 'students';
 let activeView = 'dashboard';
 let activeStudentId = null;
+let guideMode = 'admin';
 let coachSearchTerm = '';
 let coachMonthFilter = '';
 let coachDateFrom = '';
@@ -2072,6 +2080,7 @@ function switchTab(tab) {
     document.getElementById('view-coaches').classList.add('active');
     document.getElementById('view-attendance').classList.remove('active');
     document.getElementById('view-download').classList.remove('active');
+    document.getElementById('view-guide').classList.remove('active');
     renderCoachView();
   } else if (tab === 'attendance') {
     activeView = 'attendance';
@@ -2081,6 +2090,7 @@ function switchTab(tab) {
     document.getElementById('view-coaches').classList.remove('active');
     document.getElementById('view-attendance').classList.add('active');
     document.getElementById('view-download').classList.remove('active');
+    document.getElementById('view-guide').classList.remove('active');
     renderAttendanceView();
   } else if (tab === 'download') {
     if (_userRole === 'coach') { goDashboard(); return; }
@@ -2091,11 +2101,24 @@ function switchTab(tab) {
     document.getElementById('view-coaches').classList.remove('active');
     document.getElementById('view-attendance').classList.remove('active');
     document.getElementById('view-download').classList.add('active');
+    document.getElementById('view-guide').classList.remove('active');
     renderDownloadView();
+  } else if (tab === 'guide') {
+    activeView = 'guide';
+    activeStudentId = null;
+    if (isCoachUser()) guideMode = 'coach';
+    document.getElementById('view-dashboard').classList.remove('active');
+    document.getElementById('view-student').classList.remove('active');
+    document.getElementById('view-coaches').classList.remove('active');
+    document.getElementById('view-attendance').classList.remove('active');
+    document.getElementById('view-download').classList.remove('active');
+    document.getElementById('view-guide').classList.add('active');
+    renderGuideView();
   } else {
     document.getElementById('view-coaches').classList.remove('active');
     document.getElementById('view-attendance').classList.remove('active');
     document.getElementById('view-download').classList.remove('active');
+    document.getElementById('view-guide').classList.remove('active');
     if (activeView === 'student' && activeStudentId) {
       document.getElementById('view-student').classList.add('active');
     } else {
@@ -3430,6 +3453,200 @@ function renderDownloadView() {
     </div>` : ''}`;
 }
 
+const GUIDE_CONTENT = {
+  admin: {
+    title: 'Admin User Guide',
+    subtitle: 'Use this guide to manage students, coaches, attendance, imports, and backups.',
+    highlights: [
+      { label: 'Students', value: 'Create, edit, renew, pause, withdraw, and delete profile sheets.' },
+      { label: 'Coaches', value: 'Add coach profiles and keep assignments accurate.' },
+      { label: 'Downloads', value: 'Export backups and import older student Excel files.' }
+    ],
+    sections: [
+      {
+        title: '1. Students Dashboard',
+        items: [
+          { title: 'Search and sort', body: 'Use the search bar and table filters to find students by name, coach, last session, start date, or end date.' },
+          { title: 'Pending start dates', body: 'If a current program has no start date yet, the dashboard shows Pending so the team knows the program has not officially started.' },
+          { title: 'Open profile sheets', body: 'Click a student row to open the full profile sheet, calendar, program history, and session log.' }
+        ]
+      },
+      {
+        title: '2. Create or Update a Profile Sheet',
+        items: [
+          { title: 'New student', body: 'Click New Student, enter the student name, select the program type and program number, then save the profile.' },
+          { title: 'Optional fields', body: 'Coach and Speaking Level can be left blank and added later when the information is available.' },
+          { title: 'Program start date', body: 'You can start with a real date or leave it blank. A blank start date is treated as Pending until the first session is logged.' }
+        ]
+      },
+      {
+        title: '3. Manage Programs',
+        items: [
+          { title: 'Renewals', body: 'Use Renew Program to move a student into the next program while carrying forward any extra completed sessions automatically.' },
+          { title: 'Edit later-program dates', body: 'Use Edit Date beside the title of the 2nd program, 3rd program, and later programs whenever a start date needs correction.' },
+          { title: 'Pauses and withdrawal', body: 'Use Program Pause to block out planned breaks. Use Withdrawal when a student stops the program and Undo Withdrawal if they return.' }
+        ]
+      },
+      {
+        title: '4. Session Log and Calendar',
+        items: [
+          { title: 'Log sessions', body: 'Use Log Session on the correct day row. For pending programs, the first logged session date becomes the program start date and Day 1.' },
+          { title: 'Edit or delete', body: 'Saved sessions can be opened again and updated when notes, dates, or status need correction.' },
+          { title: 'Counts', body: 'Completed sessions, remaining sessions, and carry-over totals update from the saved session records in each program.' }
+        ]
+      },
+      {
+        title: '5. Coaches and Attendance',
+        items: [
+          { title: 'Coach profiles', body: 'Use the Coaches tab to add, rename, or remove coach profiles. Student assignments should point to an existing coach profile.' },
+          { title: 'Coach visibility', body: 'Coaches only see the students assigned to them, plus their own attendance totals and accessible profile actions.' },
+          { title: 'Attendance tab', body: 'Use the Attendance tab to review Attended, Reschedule, and Missed counts with search and date filters.' }
+        ]
+      },
+      {
+        title: '6. Backups and Imports',
+        items: [
+          { title: 'Download backups', body: 'The Download tab exports a ZIP with one spreadsheet per student and one spreadsheet per coach, plus a Last Downloaded timestamp.' },
+          { title: 'Import older workbooks', body: 'Import Student Excel reads one historical student workbook and rebuilds the student profile in the app.' },
+          { title: 'Coach matching during import', body: 'Imports only use coach names that already exist in the app. If no coach match is found, the coach field stays blank so you can assign it manually.' }
+        ]
+      },
+      {
+        title: '7. Admin Permissions',
+        items: [
+          { title: 'Delete access', body: 'Only admins can delete student profile sheets and coach profiles.' },
+          { title: 'Sensitive changes', body: 'Use extra care when changing start dates, importing history, or deleting records because those actions affect reporting and carry-over counts.' },
+          { title: 'Recovery view', body: 'If an older profile cannot render normally, the recovery view still lets an admin review key details and remove the student if needed.' }
+        ]
+      }
+    ]
+  },
+  coach: {
+    title: 'Coach User Guide',
+    subtitle: 'Use this guide to manage your assigned students, log sessions, and keep attendance up to date.',
+    highlights: [
+      { label: 'My Students', value: 'Coaches only see students assigned to their own coach profile.' },
+      { label: 'Session Logging', value: 'Log, edit, and review sessions directly from each student calendar.' },
+      { label: 'Attendance', value: 'Use filters to review attended, rescheduled, and missed sessions.' }
+    ],
+    sections: [
+      {
+        title: '1. What You Can Access',
+        items: [
+          { title: 'Assigned students only', body: 'The Students dashboard shows only the students linked to your coach profile.' },
+          { title: 'Coach-safe actions', body: 'You can open profile sheets, log sessions, edit saved sessions, and use allowed date tools for later programs.' },
+          { title: 'Restricted actions', body: 'Coaches do not manage coach profiles, downloads, student deletion, renewals, or withdrawals.' }
+        ]
+      },
+      {
+        title: '2. Students Dashboard',
+        items: [
+          { title: 'Find students quickly', body: 'Use the search bar and table filters to find students by name and review their current status, progress, last session, and dates.' },
+          { title: 'Pending programs', body: 'If a start date has not been confirmed yet, the dashboard shows Pending so you know the first session will establish Day 1.' },
+          { title: 'Open the calendar', body: 'Click the student row to open the full program calendar and session log.' }
+        ]
+      },
+      {
+        title: '3. Log and Update Sessions',
+        items: [
+          { title: 'Log Session', body: 'Open the correct day row and click Log Session. Add the session date, notes, and status in the form.' },
+          { title: 'Pending Day 1', body: 'If the program start date is pending, the first Day 1 session you log becomes the official start date of that program.' },
+          { title: 'Edit saved records', body: 'Use Edit on an existing session card whenever the date, notes, or outcome needs to be corrected.' }
+        ]
+      },
+      {
+        title: '4. Program Dates',
+        items: [
+          { title: 'Later-program Edit Date', body: 'Coaches can use Edit Date beside the title of the 2nd program, 3rd program, and later programs when those dates need to be updated.' },
+          { title: 'First program date', body: 'The first program start date is usually controlled by the first logged session or by an admin update.' },
+          { title: 'Carry-over awareness', body: 'If a previous program went over its session limit, the extra completed sessions carry into the next program automatically.' }
+        ]
+      },
+      {
+        title: '5. Attendance View',
+        items: [
+          { title: 'Summary counts', body: 'Use the Attendance tab to check attended, rescheduled, and missed counts for your students.' },
+          { title: 'Search and date filters', body: 'Use the student search and date range tools to narrow the report to the students and time period you need.' },
+          { title: 'Check the session log', body: 'If a count looks off, open the student profile and review the saved session entries on the calendar.' }
+        ]
+      },
+      {
+        title: '6. When You Need Admin Help',
+        items: [
+          { title: 'Profile details', body: 'Ask an admin to update missing coach assignments, student profile fields, renewals, pauses, withdrawals, or imports.' },
+          { title: 'Coach assignment problems', body: 'If you cannot see a student you should be coaching, ask an admin to confirm the student is assigned to your coach profile.' },
+          { title: 'Record cleanup', body: 'If a workbook import or older profile looks unusual, flag it for admin review before continuing with manual edits.' }
+        ]
+      }
+    ]
+  }
+};
+
+function setGuideMode(mode) {
+  guideMode = mode === 'coach' ? 'coach' : 'admin';
+  renderGuideView();
+}
+
+function renderGuideSection(section) {
+  return `
+    <section style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:20px;box-shadow:var(--shadow-sm)">
+      <div style="font-size:16px;font-weight:800;color:var(--gray-800);margin-bottom:14px">${esc(section.title)}</div>
+      <div style="display:grid;gap:12px">
+        ${(section.items || []).map(item => `
+          <div style="padding:12px 14px;border:1px solid var(--gray-200);border-radius:8px;background:#FAFAFA">
+            <div style="font-size:13px;font-weight:800;color:var(--gray-800);margin-bottom:4px">${esc(item.title)}</div>
+            <div style="font-size:13px;line-height:1.6;color:var(--gray-600)">${esc(item.body)}</div>
+          </div>
+        `).join('')}
+      </div>
+    </section>`;
+}
+
+function renderGuideView() {
+  const container = document.getElementById('guide-container');
+  if (!container) return;
+  if (isCoachUser()) guideMode = 'coach';
+  if (guideMode !== 'coach' && guideMode !== 'admin') guideMode = isCoachUser() ? 'coach' : 'admin';
+  const guide = GUIDE_CONTENT[guideMode] || GUIDE_CONTENT.admin;
+  const canSwitchRole = isAdminUser();
+  const roleBadge = guideMode === 'admin' ? 'Admin view' : 'Coach view';
+  container.innerHTML = `
+    <div class="dashboard-header">
+      <div>
+        <h1>User Guide</h1>
+        <p>${esc(guide.subtitle)}</p>
+      </div>
+    </div>
+    <div style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:18px 20px;box-shadow:var(--shadow-sm);margin-bottom:16px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">${esc(roleBadge)}</div>
+          <div style="font-size:20px;font-weight:900;color:var(--gray-800);margin-top:4px">${esc(guide.title)}</div>
+          <div style="font-size:13px;line-height:1.6;color:var(--gray-600);margin-top:6px">This guide is embedded in the app so your team can check the workflow while working.</div>
+        </div>
+        ${canSwitchRole ? `
+          <div style="display:inline-flex;padding:4px;border:1px solid var(--gray-200);border-radius:10px;background:#F8FAFC;gap:4px">
+            <button class="btn ${guideMode === 'admin' ? 'btn-primary' : 'btn-secondary'}" style="min-width:118px" onclick="setGuideMode('admin')">Admin Guide</button>
+            <button class="btn ${guideMode === 'coach' ? 'btn-primary' : 'btn-secondary'}" style="min-width:118px" onclick="setGuideMode('coach')">Coach Guide</button>
+          </div>
+        ` : `
+          <div style="padding:8px 12px;border-radius:999px;background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;font-size:12px;font-weight:800">Coach access guide</div>
+        `}
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px">
+      ${(guide.highlights || []).map(card => `
+        <div style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:16px;box-shadow:var(--shadow-sm)">
+          <div style="font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">${esc(card.label)}</div>
+          <div style="font-size:13px;line-height:1.6;color:var(--gray-700);margin-top:8px">${esc(card.value)}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div style="display:grid;gap:14px">
+      ${(guide.sections || []).map(renderGuideSection).join('')}
+    </div>`;
+}
+
 function renderCoachView() {
   try {
   if (coachDateFrom && coachDateTo && coachDateFrom > coachDateTo) {
@@ -3770,6 +3987,7 @@ function goDashboard() {
   document.getElementById('view-coaches').classList.remove('active');
   document.getElementById('view-attendance').classList.remove('active');
   document.getElementById('view-download').classList.remove('active');
+  document.getElementById('view-guide').classList.remove('active');
   renderDashboard();
 }
 
@@ -3822,6 +4040,7 @@ function goStudent(id) {
   document.getElementById('view-coaches').classList.remove('active');
   document.getElementById('view-attendance').classList.remove('active');
   document.getElementById('view-download').classList.remove('active');
+  document.getElementById('view-guide').classList.remove('active');
   try {
     renderStudent(id);
   } catch (err) {
