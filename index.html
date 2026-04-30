@@ -4694,6 +4694,11 @@ function drawCoachInvoicePdf(doc, data) {
         formatUsdMoney(item.total)
       ])
     : [['No billable work found for this month.', '', '', '', formatUsdMoney(0)]];
+  const qtyColWidth = 44;
+  const unitPriceColWidth = 74;
+  const totalColWidth = 84;
+  const studentColWidth = 150;
+  const detailsColWidth = contentWidth - studentColWidth - qtyColWidth - unitPriceColWidth - totalColWidth;
 
   doc.autoTable({
     startY: y,
@@ -4706,36 +4711,45 @@ function drawCoachInvoicePdf(doc, data) {
       textColor: ink,
       lineColor: border,
       lineWidth: 0.6,
-      cellPadding: { top: 6, right: 7, bottom: 6, left: 7 },
-      valign: 'top'
+      cellPadding: { top: 7, right: 8, bottom: 7, left: 8 },
+      valign: 'middle',
+      overflow: 'linebreak'
     },
     headStyles: {
       fillColor: navy,
       textColor: [255, 255, 255],
       fontStyle: 'bold',
-      halign: 'left'
+      halign: 'left',
+      valign: 'middle'
+    },
+    bodyStyles: {
+      valign: 'middle'
+    },
+    footStyles: {
+      fillColor: [255, 255, 255],
+      textColor: ink,
+      lineColor: border,
+      lineWidth: 0.6,
+      fontStyle: 'bold',
+      valign: 'middle'
     },
     columnStyles: {
-      0: { cellWidth: 165 },
-      1: { cellWidth: 162 },
-      2: { cellWidth: 50, halign: 'center' },
-      3: { cellWidth: 74, halign: 'right' },
-      4: { cellWidth: 86, halign: 'right' }
+      0: { cellWidth: studentColWidth, halign: 'left' },
+      1: { cellWidth: detailsColWidth, halign: 'left' },
+      2: { cellWidth: qtyColWidth, halign: 'right' },
+      3: { cellWidth: unitPriceColWidth, halign: 'right' },
+      4: { cellWidth: totalColWidth, halign: 'right' }
     },
     head: [[`Student's Complete Name`, 'Date / Details', 'Qty', 'Unit Price', 'Total (USD)']],
-    body: bodyRows
+    body: bodyRows,
+    foot: [[
+      { content: '', colSpan: 3, styles: { halign: 'left' } },
+      { content: 'Total', styles: { halign: 'right' } },
+      { content: formatUsdMoney(data.totalAmount), styles: { halign: 'right' } }
+    ]]
   });
 
-  let finalY = (doc.lastAutoTable?.finalY || y) + 8;
-  const totalLabelWidth = 82;
-  const totalAmountWidth = 98;
-  const totalX = marginX + contentWidth - totalLabelWidth - totalAmountWidth;
-  doc.rect(totalX, finalY, totalLabelWidth, 22);
-  doc.rect(totalX + totalLabelWidth, finalY, totalAmountWidth, 22);
-  setFont(10, 'bold');
-  doc.text('Total', totalX + totalLabelWidth - 8, finalY + 14, { align: 'right' });
-  doc.text(formatUsdMoney(data.totalAmount), totalX + totalLabelWidth + totalAmountWidth - 8, finalY + 14, { align: 'right' });
-  finalY += 40;
+  let finalY = (doc.lastAutoTable?.finalY || y) + 24;
 
   const paymentLines = [
     'Payment Method: ' + (data.defaults.paymentMethod || '-'),
