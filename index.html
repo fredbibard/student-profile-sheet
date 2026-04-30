@@ -10,6 +10,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
 :root {
   --green: #B91C1C;
@@ -400,6 +402,9 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
     <div class="nav-tab" data-tab="download" onclick="switchTab('download')">
       <span class="nav-tab-icon">&#8681;</span><span>Download &amp; Import</span>
     </div>
+    <div class="nav-tab" data-tab="invoice" onclick="switchTab('invoice')">
+      <span class="nav-tab-icon">&#128196;</span><span>Invoice Generator</span>
+    </div>
     <div class="nav-tab" data-tab="guide" onclick="switchTab('guide')">
       <span class="nav-tab-icon">&#128214;</span><span>User Guide</span>
     </div>
@@ -444,6 +449,10 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
     <!-- DOWNLOAD VIEW -->
     <div id="view-download" class="view">
       <div class="container" id="download-container"></div>
+    </div>
+    <!-- INVOICE VIEW -->
+    <div id="view-invoice" class="view">
+      <div class="container" id="invoice-container"></div>
     </div>
     <!-- GUIDE VIEW -->
     <div id="view-guide" class="view">
@@ -1150,9 +1159,11 @@ function applyRoleUi() {
   const isCoach = _userRole === 'coach';
   const coachesTab = document.querySelector('[data-tab="coaches"]');
   const downloadTab = document.querySelector('[data-tab="download"]');
+  const invoiceTab = document.querySelector('[data-tab="invoice"]');
   const newStudentBtn = document.getElementById('btn-new-student');
   if (coachesTab) coachesTab.style.display = isCoach ? 'none' : '';
   if (downloadTab) downloadTab.style.display = isCoach ? 'none' : '';
+  if (invoiceTab) invoiceTab.style.display = isCoach ? 'none' : '';
   if (newStudentBtn) newStudentBtn.style.display = isCoach ? 'none' : '';
 }
 
@@ -1427,6 +1438,7 @@ function startSync() {
       else goDashboard();
     } else if (activeView === 'attendance') renderAttendanceView();
     else if (activeView === 'download') renderDownloadView();
+    else if (activeView === 'invoice') renderInvoiceView();
     else if (activeView === 'coaches') renderCoachView();
     else renderDashboard();
   }, console.error));
@@ -1440,6 +1452,7 @@ function startSync() {
       .sort((a, b) => a.name.localeCompare(b.name));
     if (activeView === 'coaches') switchTab('coaches');
     else if (activeView === 'download') renderDownloadView();
+    else if (activeView === 'invoice') renderInvoiceView();
   }, console.error));
 
   _syncUnsubs.push(fsdb.collection('meta').doc('app').onSnapshot(snapshot => {
@@ -1448,6 +1461,7 @@ function startSync() {
     _cache.backupLastDownloaded = data.backupLastDownloaded || '';
     _cache.guideContent = normalizeGuideContent(data.guideContent || null);
     if (activeView === 'download') renderDownloadView();
+    else if (activeView === 'invoice') renderInvoiceView();
     else if (activeView === 'guide') renderGuideView();
   }, console.error));
 
@@ -1464,6 +1478,7 @@ function startSync() {
     });
     if (activeView === 'coaches') switchTab('coaches');
     else if (activeView === 'download') renderDownloadView();
+    else if (activeView === 'invoice') renderInvoiceView();
   }, console.error));
 }
 
@@ -1519,7 +1534,7 @@ auth.onAuthStateChanged(async user => {
 
   // Apply role-based UI restrictions
   applyRoleUi();
-  if (_userRole === 'coach' && (activeTab === 'coaches' || activeTab === 'download')) goDashboard();
+  if (_userRole === 'coach' && (activeTab === 'coaches' || activeTab === 'download' || activeTab === 'invoice')) goDashboard();
 
   // Show header + body, hide login
   loginScreen.style.display = 'none';
@@ -2285,6 +2300,7 @@ function switchTab(tab) {
     document.getElementById('view-coaches').classList.add('active');
     document.getElementById('view-attendance').classList.remove('active');
     document.getElementById('view-download').classList.remove('active');
+    document.getElementById('view-invoice').classList.remove('active');
     document.getElementById('view-guide').classList.remove('active');
     renderCoachView();
   } else if (tab === 'attendance') {
@@ -2295,6 +2311,7 @@ function switchTab(tab) {
     document.getElementById('view-coaches').classList.remove('active');
     document.getElementById('view-attendance').classList.add('active');
     document.getElementById('view-download').classList.remove('active');
+    document.getElementById('view-invoice').classList.remove('active');
     document.getElementById('view-guide').classList.remove('active');
     renderAttendanceView();
   } else if (tab === 'download') {
@@ -2306,8 +2323,21 @@ function switchTab(tab) {
     document.getElementById('view-coaches').classList.remove('active');
     document.getElementById('view-attendance').classList.remove('active');
     document.getElementById('view-download').classList.add('active');
+    document.getElementById('view-invoice').classList.remove('active');
     document.getElementById('view-guide').classList.remove('active');
     renderDownloadView();
+  } else if (tab === 'invoice') {
+    if (_userRole === 'coach') { goDashboard(); return; }
+    activeView = 'invoice';
+    activeStudentId = null;
+    document.getElementById('view-dashboard').classList.remove('active');
+    document.getElementById('view-student').classList.remove('active');
+    document.getElementById('view-coaches').classList.remove('active');
+    document.getElementById('view-attendance').classList.remove('active');
+    document.getElementById('view-download').classList.remove('active');
+    document.getElementById('view-invoice').classList.add('active');
+    document.getElementById('view-guide').classList.remove('active');
+    renderInvoiceView();
   } else if (tab === 'guide') {
     activeView = 'guide';
     activeStudentId = null;
@@ -2317,12 +2347,14 @@ function switchTab(tab) {
     document.getElementById('view-coaches').classList.remove('active');
     document.getElementById('view-attendance').classList.remove('active');
     document.getElementById('view-download').classList.remove('active');
+    document.getElementById('view-invoice').classList.remove('active');
     document.getElementById('view-guide').classList.add('active');
     renderGuideView();
   } else {
     document.getElementById('view-coaches').classList.remove('active');
     document.getElementById('view-attendance').classList.remove('active');
     document.getElementById('view-download').classList.remove('active');
+    document.getElementById('view-invoice').classList.remove('active');
     document.getElementById('view-guide').classList.remove('active');
     if (activeView === 'student' && activeStudentId) {
       document.getElementById('view-student').classList.add('active');
@@ -3831,13 +3863,13 @@ function setInvoiceCoach(id) {
   invoiceDraftCoachId = '';
   invoiceDraftDirty = false;
   setCoachInvoiceStatus('');
-  renderDownloadView();
+  renderInvoiceView();
 }
 
 function setInvoiceMonth(value) {
   invoiceMonth = value || localDateStr(new Date()).slice(0, 7);
   setCoachInvoiceStatus('');
-  renderDownloadView();
+  renderInvoiceView();
 }
 
 function setInvoiceDraftField(field, value) {
@@ -4064,6 +4096,155 @@ function persistCoachInvoiceDefaults(coach) {
   return draft;
 }
 
+function drawCoachInvoicePdf(doc, data) {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 40;
+  const topY = 44;
+  const contentWidth = pageWidth - (marginX * 2);
+  const leftWidth = 300;
+  const rightX = marginX + leftWidth + 24;
+  const rightWidth = contentWidth - leftWidth - 24;
+  const safePaymentBank = data.defaults.bankNameAddress || '-';
+  const leftLines = [
+    { text: data.coach.name || 'Coach Name', bold: true, size: 16 },
+    { text: 'Address: ' + (data.defaults.address || '-'), size: 10.5 },
+    { text: 'Contact Number: ' + (data.defaults.contactNumber || '-'), size: 10.5 },
+    { text: 'Email: ' + (data.defaults.email || '-'), size: 10.5 }
+  ];
+
+  let leftY = topY;
+  leftLines.forEach((line, index) => {
+    doc.setFont('helvetica', line.bold ? 'bold' : 'normal');
+    doc.setFontSize(line.size || 11);
+    const lines = doc.splitTextToSize(line.text, leftWidth);
+    doc.text(lines, marginX, leftY);
+    leftY += (lines.length * (line.bold ? 18 : 14)) + (index === 0 ? 4 : 2);
+  });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.text('Invoice', rightX, topY);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10.5);
+  const invoiceMeta = [
+    ['Date:', data.invoiceDateLabel],
+    ['Invoice #:', data.invoiceNumber],
+    ['Invoice Month:', data.invoiceMonthLabel]
+  ];
+  let rightY = topY + 24;
+  invoiceMeta.forEach(([label, value]) => {
+    doc.setFont('helvetica', 'bold');
+    doc.text(label, rightX, rightY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(String(value || '-'), rightX + 70, rightY);
+    rightY += 15;
+  });
+
+  let y = Math.max(leftY, rightY) + 16;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('Bill To:', marginX, y);
+  y += 14;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10.5);
+  const billToLines = [
+    'Lingohabit LLC',
+    'Address: 30 N Gould St Ste R, Sheridan, Wyoming, 82801, United States',
+    'Company code (US): EIN 38-4251517',
+    'Email address: frederic@lingohabit.com',
+    'Note: The company is located in the USA so no EU VAT'
+  ];
+  billToLines.forEach(line => {
+    const wrapped = doc.splitTextToSize(line, contentWidth);
+    doc.text(wrapped, marginX, y);
+    y += wrapped.length * 13;
+  });
+  y += 10;
+
+  const bodyRows = data.lineItems.length
+    ? data.lineItems.map(item => [
+        item.studentName,
+        item.dates.map(date => fmtDate(date)).join('\n'),
+        formatSessionAmount(item.quantity),
+        formatUsdMoney(data.unitRate),
+        formatUsdMoney(item.total)
+      ])
+    : [[`No payable logged sessions found for ${data.invoiceMonthLabel}.`, '', '', '', '']];
+
+  doc.autoTable({
+    startY: y,
+    theme: 'grid',
+    margin: { left: marginX, right: marginX },
+    styles: {
+      font: 'helvetica',
+      fontSize: 9.5,
+      cellPadding: 6,
+      lineColor: [209, 213, 219],
+      lineWidth: 0.6,
+      textColor: [31, 41, 55],
+      valign: 'top'
+    },
+    headStyles: {
+      fillColor: [243, 244, 246],
+      textColor: [31, 41, 55],
+      fontStyle: 'bold'
+    },
+    footStyles: {
+      fillColor: [249, 250, 251],
+      textColor: [31, 41, 55],
+      fontStyle: 'bold'
+    },
+    columnStyles: {
+      0: { cellWidth: 170 },
+      1: { cellWidth: 150 },
+      2: { cellWidth: 48, halign: 'center' },
+      3: { cellWidth: 72, halign: 'right' },
+      4: { cellWidth: 80, halign: 'right' }
+    },
+    head: [[`Student's Complete Name`, 'Session Date', 'Qty', 'Unit Price', 'Total (USD)']],
+    body: bodyRows,
+    foot: [[
+      'Total',
+      '',
+      formatSessionAmount(data.totalQuantity),
+      formatUsdMoney(data.unitRate),
+      formatUsdMoney(data.totalAmount)
+    ]]
+  });
+
+  let finalY = (doc.lastAutoTable?.finalY || y) + 16;
+  const paymentLines = [
+    'Payment Method: ' + (data.defaults.paymentMethod || '-'),
+    'Account Holder: ' + (data.defaults.accountHolder || '-'),
+    'Account Number: ' + (data.defaults.accountNumber || '-'),
+    'Account Type: ' + (data.defaults.accountType || '-'),
+    'Routing Number: ' + (data.defaults.routingNumber || '-'),
+    'Bank Name and Address: ' + safePaymentBank
+  ];
+
+  const paymentBlockHeight = paymentLines.reduce((sum, line, index) => {
+    const wrapped = doc.splitTextToSize(line, contentWidth);
+    return sum + (index === 0 ? 18 : 0) + wrapped.length * 13 + 2;
+  }, 0);
+  if (finalY + paymentBlockHeight > pageHeight - 40) {
+    doc.addPage();
+    finalY = 50;
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('Payment Details', marginX, finalY);
+  finalY += 16;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10.5);
+  paymentLines.forEach(line => {
+    const wrapped = doc.splitTextToSize(line, contentWidth);
+    doc.text(wrapped, marginX, finalY);
+    finalY += wrapped.length * 13 + 2;
+  });
+}
+
 function saveCoachInvoiceDefaults() {
   if (!isAdminUser()) return;
   const coach = getInvoiceSelectedCoach();
@@ -4073,7 +4254,7 @@ function saveCoachInvoiceDefaults() {
   }
   persistCoachInvoiceDefaults(coach);
   setCoachInvoiceStatus(`Saved billing defaults for ${coach.name}.`, 'success');
-  renderDownloadView();
+  renderInvoiceView();
 }
 
 function downloadCoachInvoice() {
@@ -4092,15 +4273,19 @@ function downloadCoachInvoice() {
   }
 
   try {
+    if (!window.jspdf || !window.jspdf.jsPDF || typeof window.jspdf.jsPDF !== 'function') {
+      throw new Error('The PDF library is still loading. Please try again in a moment.');
+    }
     const draft = persistCoachInvoiceDefaults(coach);
     const invoiceData = buildCoachInvoiceData(coach, invoiceMonth, draft);
     if (!invoiceData.hasRate) {
       setCoachInvoiceStatus('Enter a valid coach rate before generating the invoice.', 'error');
       return;
     }
-    const html = buildCoachInvoiceDocumentHtml(invoiceData);
-    const blob = new Blob([html], { type: 'application/msword;charset=utf-8' });
-    triggerBlobDownload(blob, `invoice-${sanitizeFileName(coach.name, 'coach')}-${invoiceMonth}.doc`);
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    drawCoachInvoicePdf(doc, invoiceData);
+    doc.save(`invoice-${sanitizeFileName(coach.name, 'coach')}-${invoiceMonth}.pdf`);
     setCoachInvoiceStatus(`Invoice generated for ${coach.name} (${invoiceData.invoiceMonthLabel}).`, 'success');
   } catch (err) {
     console.error('Unable to generate coach invoice', err);
@@ -4108,7 +4293,7 @@ function downloadCoachInvoice() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = oldText || 'Download Invoice (.doc)';
+      btn.textContent = oldText || 'Download Invoice (.pdf)';
     }
   }
 }
@@ -4118,13 +4303,6 @@ function renderDownloadView() {
   if (!container) return;
   const students = _cache.students || [];
   const coaches = getKnownCoachNames();
-  const invoiceCoaches = getInvoiceCoachProfiles();
-  const selectedInvoiceCoach = getInvoiceSelectedCoach();
-  const invoiceDraftData = selectedInvoiceCoach ? getInvoiceDraftForCoach(selectedInvoiceCoach) : normalizeCoachInvoiceDefaults();
-  const invoicePreviewData = selectedInvoiceCoach ? buildCoachInvoiceData(selectedInvoiceCoach, invoiceMonth, invoiceDraftData) : null;
-  const invoiceStatusHtml = invoiceStatusMessage
-    ? `<div id="coach-invoice-status" style="display:block;font-size:13px;margin-top:12px;color:${invoiceStatusTone === 'error' ? '#B91C1C' : invoiceStatusTone === 'success' ? '#166534' : 'var(--gray-500)'}">${esc(invoiceStatusMessage)}</div>`
-    : `<div id="coach-invoice-status" style="display:none;font-size:13px;margin-top:12px"></div>`;
 
   container.innerHTML = `
     <div class="dashboard-header">
@@ -4164,17 +4342,34 @@ function renderDownloadView() {
       </div>
       <div id="student-excel-import-status" style="display:none;font-size:13px;margin-top:12px"></div>
       <input type="file" id="student-excel-upload" accept=".xls,.xlsx,.xlsm,.html,.htm" onchange="handleStudentExcelChosen(event)" style="display:none">
+    </div>` : ''}`;
+}
+
+function renderInvoiceView() {
+  const container = document.getElementById('invoice-container');
+  if (!container) return;
+  const invoiceCoaches = getInvoiceCoachProfiles();
+  const selectedInvoiceCoach = getInvoiceSelectedCoach();
+  const invoiceDraftData = selectedInvoiceCoach ? getInvoiceDraftForCoach(selectedInvoiceCoach) : normalizeCoachInvoiceDefaults();
+  const invoicePreviewData = selectedInvoiceCoach ? buildCoachInvoiceData(selectedInvoiceCoach, invoiceMonth, invoiceDraftData) : null;
+  const invoiceStatusHtml = invoiceStatusMessage
+    ? `<div id="coach-invoice-status" style="display:block;font-size:13px;margin-top:12px;color:${invoiceStatusTone === 'error' ? '#B91C1C' : invoiceStatusTone === 'success' ? '#166534' : 'var(--gray-500)'}">${esc(invoiceStatusMessage)}</div>`
+    : `<div id="coach-invoice-status" style="display:none;font-size:13px;margin-top:12px"></div>`;
+
+  container.innerHTML = `
+    <div class="dashboard-header">
+      <div><h1>Invoice Generator</h1><p>Generate monthly coach invoices from logged sessions and saved billing defaults.</p></div>
     </div>
-    <div style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:18px 20px;box-shadow:var(--shadow-sm);margin-top:14px">
+    <div style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:18px 20px;box-shadow:var(--shadow-sm)">
       <div style="display:flex;align-items:flex-start;gap:14px;justify-content:space-between;flex-wrap:wrap">
         <div>
           <div style="font-size:16px;font-weight:800;color:var(--gray-800)">Coach Invoice Generator</div>
-          <div style="font-size:13px;color:var(--gray-500);margin-top:4px">Generate a monthly coach invoice from logged sessions and save reusable billing defaults for each coach.</div>
+          <div style="font-size:13px;color:var(--gray-500);margin-top:4px">Use the selected month and that coach’s logged sessions to build a PDF invoice that follows the team template.</div>
         </div>
         ${selectedInvoiceCoach ? `
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-secondary" onclick="saveCoachInvoiceDefaults()">Save Coach Billing Defaults</button>
-            <button class="btn btn-primary" id="btn-download-coach-invoice" onclick="downloadCoachInvoice()">Download Invoice (.doc)</button>
+            <button class="btn btn-primary" id="btn-download-coach-invoice" onclick="downloadCoachInvoice()">Download Invoice (.pdf)</button>
           </div>` : ''}
       </div>
       ${invoiceStatusHtml}
@@ -4252,7 +4447,7 @@ function renderDownloadView() {
         <div style="margin-top:16px;padding:18px;border:1px dashed var(--gray-300);border-radius:8px;color:var(--gray-500);font-size:13px">
           Add at least one coach profile before generating invoices.
         </div>`}
-    </div>` : ''}`;
+    </div>`;
 
   setCoachInvoiceStatus(invoiceStatusMessage, invoiceStatusTone);
 }
@@ -4260,11 +4455,12 @@ function renderDownloadView() {
 const GUIDE_CONTENT = {
   admin: {
     title: 'Admin User Guide',
-    subtitle: 'Use this guide to manage students, coaches, attendance, imports, and backups.',
+    subtitle: 'Use this guide to manage students, coaches, attendance, imports, backups, and invoices.',
     highlights: [
       { label: 'Students', value: 'Create, edit, renew, pause, withdraw, and delete profile sheets.' },
       { label: 'Coaches', value: 'Add coach profiles and keep assignments accurate.' },
-      { label: 'Downloads', value: 'Export backups and import older student Excel files.' }
+      { label: 'Downloads', value: 'Export backups and import older student Excel files.' },
+      { label: 'Invoices', value: 'Generate coach payment invoices from logged sessions and saved billing defaults.' }
     ],
     sections: [
       {
@@ -4316,7 +4512,15 @@ const GUIDE_CONTENT = {
         ]
       },
       {
-        title: '7. Admin Permissions',
+        title: '7. Invoice Generator',
+        items: [
+          { title: 'Select coach and month', body: 'Open the Invoice Generator tab, choose the coach, then select the billing month you want to invoice.' },
+          { title: 'Save billing defaults', body: 'Enter or update the coach address, contact details, rate, and payment information. Save those details so future invoices auto-fill from the latest version.' },
+          { title: 'Generate PDF invoice', body: 'The invoice is calculated dynamically from that coach’s logged sessions for the selected month and downloads as a PDF using the standard invoice layout.' }
+        ]
+      },
+      {
+        title: '8. Admin Permissions',
         items: [
           { title: 'Delete access', body: 'Only admins can delete student profile sheets and coach profiles.' },
           { title: 'Sensitive changes', body: 'Use extra care when changing start dates, importing history, or deleting records because those actions affect reporting and carry-over counts.' },
@@ -5086,6 +5290,7 @@ function goDashboard() {
   document.getElementById('view-coaches').classList.remove('active');
   document.getElementById('view-attendance').classList.remove('active');
   document.getElementById('view-download').classList.remove('active');
+  document.getElementById('view-invoice').classList.remove('active');
   document.getElementById('view-guide').classList.remove('active');
   renderDashboard();
 }
@@ -5149,6 +5354,7 @@ function goStudent(id) {
   document.getElementById('view-coaches').classList.remove('active');
   document.getElementById('view-attendance').classList.remove('active');
   document.getElementById('view-download').classList.remove('active');
+  document.getElementById('view-invoice').classList.remove('active');
   document.getElementById('view-guide').classList.remove('active');
   try {
     renderStudent(id);
