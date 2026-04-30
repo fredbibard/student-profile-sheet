@@ -1054,6 +1054,46 @@ const monthLabel = ym => {
   return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 };
 
+function defaultCoachInvoiceDefaults() {
+  return {
+    address: '',
+    contactNumber: '',
+    email: '',
+    rate: '',
+    paymentMethod: '',
+    accountHolder: '',
+    accountNumber: '',
+    accountType: '',
+    routingNumber: '',
+    bankNameAddress: ''
+  };
+}
+
+function normalizeCoachInvoiceDefaults(raw = {}) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  return {
+    address: String(source.address || '').trim(),
+    contactNumber: String(source.contactNumber || '').trim(),
+    email: String(source.email || '').trim(),
+    rate: source.rate == null ? '' : String(source.rate).trim(),
+    paymentMethod: String(source.paymentMethod || '').trim(),
+    accountHolder: String(source.accountHolder || '').trim(),
+    accountNumber: String(source.accountNumber || '').trim(),
+    accountType: String(source.accountType || '').trim(),
+    routingNumber: String(source.routingNumber || '').trim(),
+    bankNameAddress: String(source.bankNameAddress || '').trim()
+  };
+}
+
+function normalizeCoachRecord(coach = {}) {
+  return {
+    ...coach,
+    id: coach.id || '',
+    name: String(coach.name || '').trim(),
+    invoiceDefaults: normalizeCoachInvoiceDefaults(coach.invoiceDefaults || {})
+  };
+}
+
 function getCoachOnDate(s, dateStr) {
   if (!dateStr || !s.coachHistory || !s.coachHistory.length) return s.coach || '';
   const history = [...s.coachHistory].sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -1394,7 +1434,7 @@ function startSync() {
   _syncUnsubs.push(fsdb.collection('coaches').onSnapshot(snapshot => {
     _cache.coaches = snapshot.docs.map(d => {
       const data = d.data() || {};
-      return { ...data, id: data.id || d.id };
+      return normalizeCoachRecord({ ...data, id: data.id || d.id });
     })
       .filter(c => c && c.name)
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -1623,22 +1663,23 @@ const DB = {
     fsdb.collection('students').doc(id).delete().catch(console.error);
   },
   allCoaches() {
-    return (_cache.coaches || []).sort((a, b) => a.name.localeCompare(b.name));
+    return (_cache.coaches || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   },
   deletedCoachNames() {
     return [...new Set((_cache.deletedCoachNames || []).map(n => n.trim()))]
       .sort((a, b) => a.localeCompare(b));
   },
   upsertCoach(coach) {
-    const coachName = coach?.name?.trim();
+    const normalized = normalizeCoachRecord(coach);
+    const coachName = normalized?.name?.trim();
     if (!coachName) return;
     _cache.deletedCoachNames = (_cache.deletedCoachNames || [])
       .filter(n => n.toLowerCase() !== coachName.toLowerCase());
     if (!_cache.coaches) _cache.coaches = [];
-    const i = _cache.coaches.findIndex(c => c.id === coach.id);
-    if (i >= 0) _cache.coaches[i] = { ...coach, name: coachName };
-    else _cache.coaches.push({ ...coach, name: coachName });
-    fsdb.collection('coaches').doc(coach.id).set({ ...coach, name: coachName }).catch(console.error);
+    const i = _cache.coaches.findIndex(c => c.id === normalized.id);
+    if (i >= 0) _cache.coaches[i] = normalized;
+    else _cache.coaches.push(normalized);
+    fsdb.collection('coaches').doc(normalized.id).set(normalized).catch(console.error);
     fsdb.collection('meta').doc('app')
       .set({ deletedCoachNames: _cache.deletedCoachNames }, { merge: true }).catch(console.error);
   },
@@ -1878,6 +1919,13 @@ let coachDateTo = '';
 let attendanceDateFrom = '';
 let attendanceDateTo = '';
 let attendanceSearchTerm = '';
+let invoiceCoachId = '';
+let invoiceMonth = localDateStr(new Date()).slice(0, 7);
+let invoiceDraft = null;
+let invoiceDraftCoachId = '';
+let invoiceDraftDirty = false;
+let invoiceStatusMessage = '';
+let invoiceStatusTone = 'info';
 let sessionCtx = null; // { studentId, week, slot, editId }
 let pendingDeleteId = null;
 let pendingDeleteType = null; // 'student' | 'session'
@@ -3710,11 +3758,374 @@ function handleStudentExcelChosen(event) {
   if (file) importStudentExcelFile(file);
 }
 
+function roundCurrency(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function formatUsdMoney(value) {
+  return roundCurrency(value).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
+function formatInvoiceMultiline(value) {
+  return esc(value || '').replace(/\n/g, '<br>');
+}
+
+function getInvoiceCoachProfiles() {
+  return DB.allCoaches().filter(coach => coach && coach.name && !isDeletedCoachName(coach.name));
+}
+
+function getInvoiceSelectedCoach() {
+  const coaches = getInvoiceCoachProfiles();
+  if (!coaches.length) {
+    invoiceCoachId = '';
+    invoiceDraft = null;
+    invoiceDraftCoachId = '';
+    invoiceDraftDirty = false;
+    return null;
+  }
+  if (!invoiceCoachId || !coaches.some(coach => coach.id === invoiceCoachId)) {
+    invoiceCoachId = coaches[0].id;
+    invoiceDraft = null;
+    invoiceDraftCoachId = '';
+    invoiceDraftDirty = false;
+  }
+  return coaches.find(coach => coach.id === invoiceCoachId) || null;
+}
+
+function getInvoiceDraftBase(coach) {
+  const defaults = normalizeCoachInvoiceDefaults(coach?.invoiceDefaults || {});
+  if (!defaults.email && coach?.name && _coachLogins[coach.name]?.email) {
+    defaults.email = _coachLogins[coach.name].email;
+  }
+  return defaults;
+}
+
+function getInvoiceDraftForCoach(coach) {
+  if (!coach) return normalizeCoachInvoiceDefaults();
+  if (invoiceDraftCoachId !== coach.id || !invoiceDraft || !invoiceDraftDirty) {
+    invoiceDraft = getInvoiceDraftBase(coach);
+    invoiceDraftCoachId = coach.id;
+    invoiceDraftDirty = false;
+  }
+  return invoiceDraft;
+}
+
+function setCoachInvoiceStatus(message = '', tone = 'info') {
+  invoiceStatusMessage = message || '';
+  invoiceStatusTone = tone || 'info';
+  const el = document.getElementById('coach-invoice-status');
+  if (!el) return;
+  el.style.display = message ? 'block' : 'none';
+  el.textContent = message;
+  el.style.color = tone === 'error' ? '#B91C1C' : tone === 'success' ? '#166534' : 'var(--gray-500)';
+}
+
+function setInvoiceCoach(id) {
+  invoiceCoachId = id || '';
+  invoiceDraft = null;
+  invoiceDraftCoachId = '';
+  invoiceDraftDirty = false;
+  setCoachInvoiceStatus('');
+  renderDownloadView();
+}
+
+function setInvoiceMonth(value) {
+  invoiceMonth = value || localDateStr(new Date()).slice(0, 7);
+  setCoachInvoiceStatus('');
+  renderDownloadView();
+}
+
+function setInvoiceDraftField(field, value) {
+  const coach = getInvoiceSelectedCoach();
+  if (!coach) return;
+  const draft = getInvoiceDraftForCoach(coach);
+  draft[field] = value;
+  invoiceDraftDirty = true;
+  updateCoachInvoicePreview();
+}
+
+function generateCoachInvoiceNumber(coach, ym) {
+  const slug = (coach?.name || 'coach').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 10) || 'COACH';
+  return `SLA-${slug}-${String(ym || '').replace('-', '')}`;
+}
+
+function getCoachInvoiceLineItems(coachName, ym) {
+  if (!coachName || !ym) return [];
+  const itemsByStudent = {};
+
+  (_cache.students || []).forEach(student => {
+    getAllStudentSessions(student).forEach(sess => {
+      const sessionDate = sess?.date || '';
+      if (!sessionDate || sessionDate.slice(0, 7) !== ym) return;
+      const sessionCoach = (sess.coach || getCoachOnDate(student, sessionDate) || student.coach || '').trim();
+      if (accessKey(sessionCoach) !== accessKey(coachName)) return;
+      const quantity = Logic.sessionValue(sess);
+      if (!quantity) return;
+
+      const key = student.id || `${accessKey(student.fullName || student.name)}-${sessionDate}`;
+      if (!itemsByStudent[key]) {
+        itemsByStudent[key] = {
+          studentName: student.fullName || student.name || 'Unnamed student',
+          dates: [],
+          quantity: 0
+        };
+      }
+
+      itemsByStudent[key].dates.push(sessionDate);
+      itemsByStudent[key].quantity = roundSessionAmount(itemsByStudent[key].quantity + quantity);
+    });
+  });
+
+  return Object.values(itemsByStudent)
+    .map(item => ({
+      ...item,
+      dates: item.dates.sort((a, b) => a.localeCompare(b))
+    }))
+    .sort((a, b) => a.studentName.localeCompare(b.studentName));
+}
+
+function buildCoachInvoiceData(coach, ym, draft = null) {
+  const safeCoach = normalizeCoachRecord(coach || {});
+  const safeDraft = normalizeCoachInvoiceDefaults(draft || safeCoach.invoiceDefaults || {});
+  const rate = parseFloat(safeDraft.rate);
+  const unitRate = Number.isFinite(rate) && rate >= 0 ? rate : 0;
+  const rawLineItems = getCoachInvoiceLineItems(safeCoach.name, ym);
+  const lineItems = rawLineItems.map(item => ({
+    ...item,
+    total: roundCurrency(item.quantity * unitRate)
+  }));
+  const totalQuantity = roundSessionAmount(lineItems.reduce((sum, item) => sum + item.quantity, 0));
+  const totalAmount = roundCurrency(lineItems.reduce((sum, item) => sum + item.total, 0));
+  const todayIso = localDateStr(new Date());
+
+  return {
+    coach: safeCoach,
+    defaults: safeDraft,
+    invoiceMonth: ym,
+    invoiceMonthLabel: monthLabel(ym),
+    invoiceDateIso: todayIso,
+    invoiceDateLabel: fmtDate(todayIso),
+    invoiceNumber: generateCoachInvoiceNumber(safeCoach, ym),
+    unitRate,
+    lineItems,
+    totalQuantity,
+    totalAmount,
+    hasRate: unitRate > 0
+  };
+}
+
+function buildCoachInvoiceRowsMarkup(data) {
+  if (!data.lineItems.length) {
+    return `<tr>
+      <td colspan="5" style="padding:16px 12px;border:1px solid #D1D5DB;text-align:center;color:#6B7280;font-size:13px">No payable logged sessions found for ${esc(data.invoiceMonthLabel)}.</td>
+    </tr>`;
+  }
+
+  return data.lineItems.map(item => `
+    <tr>
+      <td style="padding:10px 12px;border:1px solid #D1D5DB;vertical-align:top;font-size:13px">${esc(item.studentName)}</td>
+      <td style="padding:10px 12px;border:1px solid #D1D5DB;vertical-align:top;font-size:13px;line-height:1.6">${item.dates.map(date => esc(fmtDate(date))).join('<br>')}</td>
+      <td style="padding:10px 12px;border:1px solid #D1D5DB;vertical-align:top;font-size:13px;text-align:center">${esc(formatSessionAmount(item.quantity))}</td>
+      <td style="padding:10px 12px;border:1px solid #D1D5DB;vertical-align:top;font-size:13px;text-align:right">${formatUsdMoney(data.unitRate)}</td>
+      <td style="padding:10px 12px;border:1px solid #D1D5DB;vertical-align:top;font-size:13px;text-align:right">${formatUsdMoney(item.total)}</td>
+    </tr>
+  `).join('');
+}
+
+function buildCoachInvoiceMarkup(data, documentMode = false) {
+  if (!data) {
+    return `<div style="padding:18px;border:1px dashed var(--gray-300);border-radius:8px;color:var(--gray-500);font-size:13px">Add a coach profile to start generating invoices.</div>`;
+  }
+
+  const draft = data.defaults || normalizeCoachInvoiceDefaults();
+  const outerStyle = documentMode
+    ? 'max-width:920px;margin:0 auto;color:#111827'
+    : 'background:white;border:1px solid var(--gray-200);border-radius:8px;padding:20px;box-shadow:var(--shadow-sm)';
+  const warningBlocks = [];
+
+  if (!data.hasRate) warningBlocks.push('Enter a coach rate to calculate invoice totals.');
+  if (!data.lineItems.length) warningBlocks.push(`No payable logged sessions were found for ${data.invoiceMonthLabel}.`);
+
+  return `
+    ${!documentMode && warningBlocks.length ? `<div style="display:grid;gap:8px;margin-bottom:14px">${warningBlocks.map(message => `<div style="padding:10px 12px;border-radius:8px;background:#FFFBEB;border:1px solid #FCD34D;color:#92400E;font-size:13px">${esc(message)}</div>`).join('')}</div>` : ''}
+    ${!documentMode ? `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px">
+        <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px">
+          <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">Invoice Month</div>
+          <div style="font-size:18px;font-weight:800;color:var(--gray-800);margin-top:4px">${esc(data.invoiceMonthLabel)}</div>
+        </div>
+        <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px">
+          <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">Payable Qty</div>
+          <div style="font-size:18px;font-weight:800;color:var(--gray-800);margin-top:4px">${esc(formatSessionAmount(data.totalQuantity))}</div>
+        </div>
+        <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px">
+          <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">Invoice Total</div>
+          <div style="font-size:18px;font-weight:800;color:var(--green);margin-top:4px">${formatUsdMoney(data.totalAmount)}</div>
+        </div>
+      </div>` : ''}
+    <div style="${outerStyle}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;margin-bottom:20px">
+        <div style="flex:1;min-width:260px">
+          <div style="font-size:${documentMode ? '24px' : '22px'};font-weight:900;color:var(--gray-800);margin-bottom:8px">${esc(data.coach.name)}</div>
+          <div style="font-size:13px;line-height:1.6;color:var(--gray-700)">${formatInvoiceMultiline(draft.address) || '-'}</div>
+          <div style="font-size:13px;line-height:1.6;color:var(--gray-700);margin-top:8px">Contact Number: ${esc(draft.contactNumber || '-')}</div>
+          <div style="font-size:13px;line-height:1.6;color:var(--gray-700)">Email: ${esc(draft.email || '-')}</div>
+        </div>
+        <div style="min-width:220px">
+          <div style="font-size:${documentMode ? '28px' : '26px'};font-weight:900;color:var(--gray-800);text-transform:uppercase;letter-spacing:.5px">Invoice</div>
+          <div style="margin-top:12px;font-size:13px;line-height:1.8;color:var(--gray-700)">
+            <div><strong>Date:</strong> ${esc(data.invoiceDateLabel)}</div>
+            <div><strong>Invoice #:</strong> ${esc(data.invoiceNumber)}</div>
+            <div><strong>Invoice Month:</strong> ${esc(data.invoiceMonthLabel)}</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-bottom:18px">
+        <div style="font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Bill To</div>
+        <div style="padding:12px 14px;border:1px solid #D1D5DB;border-radius:8px;background:${documentMode ? '#FFFFFF' : '#F9FAFB'};font-size:13px;line-height:1.7;color:var(--gray-700)">
+          <div><strong>Lingohabit LLC</strong></div>
+          <div>Address: 30 N Gould St Ste R, Sheridan, Wyoming, 82801, United States</div>
+          <div>Company code (US): EIN 38-4251517</div>
+          <div>Email address: frederic@lingohabit.com</div>
+          <div>Note: The company is located in the USA so no EU VAT</div>
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+        <thead>
+          <tr style="background:#F3F4F6">
+            <th style="padding:10px 12px;border:1px solid #D1D5DB;text-align:left;font-size:12px">Student's Complete Name</th>
+            <th style="padding:10px 12px;border:1px solid #D1D5DB;text-align:left;font-size:12px">Session Date</th>
+            <th style="padding:10px 12px;border:1px solid #D1D5DB;text-align:center;font-size:12px">Qty</th>
+            <th style="padding:10px 12px;border:1px solid #D1D5DB;text-align:right;font-size:12px">Unit Price</th>
+            <th style="padding:10px 12px;border:1px solid #D1D5DB;text-align:right;font-size:12px">Total (USD)</th>
+          </tr>
+        </thead>
+        <tbody>${buildCoachInvoiceRowsMarkup(data)}</tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" style="padding:12px;border:1px solid #D1D5DB;text-align:right;font-size:13px;font-weight:800">Total</td>
+            <td style="padding:12px;border:1px solid #D1D5DB;text-align:center;font-size:13px;font-weight:800">${esc(formatSessionAmount(data.totalQuantity))}</td>
+            <td style="padding:12px;border:1px solid #D1D5DB;text-align:right;font-size:13px;font-weight:800">${formatUsdMoney(data.unitRate)}</td>
+            <td style="padding:12px;border:1px solid #D1D5DB;text-align:right;font-size:13px;font-weight:800">${formatUsdMoney(data.totalAmount)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div>
+        <div style="font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Payment Method</div>
+        <div style="padding:12px 14px;border:1px solid #D1D5DB;border-radius:8px;background:${documentMode ? '#FFFFFF' : '#F9FAFB'};font-size:13px;line-height:1.7;color:var(--gray-700)">
+          <div><strong>Payment Method:</strong> ${esc(draft.paymentMethod || '-')}</div>
+          <div><strong>Account Holder:</strong> ${esc(draft.accountHolder || '-')}</div>
+          <div><strong>Account Number:</strong> ${esc(draft.accountNumber || '-')}</div>
+          <div><strong>Account Type:</strong> ${esc(draft.accountType || '-')}</div>
+          <div><strong>Routing Number:</strong> ${esc(draft.routingNumber || '-')}</div>
+          <div><strong>Bank Name and Address:</strong><br>${formatInvoiceMultiline(draft.bankNameAddress) || '-'}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function buildCoachInvoicePreview(data) {
+  return buildCoachInvoiceMarkup(data, false);
+}
+
+function buildCoachInvoiceDocumentHtml(data) {
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(data.coach.name)} Invoice ${esc(data.invoiceMonthLabel)}</title><style>
+    :root {
+      --gray-200: #E5E7EB;
+      --gray-500: #6B7280;
+      --gray-700: #374151;
+      --gray-800: #1F2937;
+      --green: #B91C1C;
+    }
+    body { font-family: Calibri, Arial, sans-serif; background:#FFFFFF; color:#111827; margin:24px; }
+    strong { font-weight:700; }
+  </style></head><body>${buildCoachInvoiceMarkup(data, true)}</body></html>`;
+}
+
+function updateCoachInvoicePreview() {
+  const preview = document.getElementById('coach-invoice-preview');
+  if (!preview) return;
+  const coach = getInvoiceSelectedCoach();
+  preview.innerHTML = buildCoachInvoicePreview(coach ? buildCoachInvoiceData(coach, invoiceMonth, getInvoiceDraftForCoach(coach)) : null);
+}
+
+function persistCoachInvoiceDefaults(coach) {
+  if (!coach) return null;
+  const draft = normalizeCoachInvoiceDefaults(getInvoiceDraftForCoach(coach));
+  DB.upsertCoach({ ...coach, invoiceDefaults: draft });
+  invoiceDraft = { ...draft };
+  invoiceDraftCoachId = coach.id;
+  invoiceDraftDirty = false;
+  return draft;
+}
+
+function saveCoachInvoiceDefaults() {
+  if (!isAdminUser()) return;
+  const coach = getInvoiceSelectedCoach();
+  if (!coach) {
+    setCoachInvoiceStatus('Add a coach profile first before saving invoice defaults.', 'error');
+    return;
+  }
+  persistCoachInvoiceDefaults(coach);
+  setCoachInvoiceStatus(`Saved billing defaults for ${coach.name}.`, 'success');
+  renderDownloadView();
+}
+
+function downloadCoachInvoice() {
+  if (!isAdminUser()) return;
+  const coach = getInvoiceSelectedCoach();
+  if (!coach) {
+    setCoachInvoiceStatus('Select a coach profile first.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-download-coach-invoice');
+  const oldText = btn ? btn.textContent : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+  }
+
+  try {
+    const draft = persistCoachInvoiceDefaults(coach);
+    const invoiceData = buildCoachInvoiceData(coach, invoiceMonth, draft);
+    if (!invoiceData.hasRate) {
+      setCoachInvoiceStatus('Enter a valid coach rate before generating the invoice.', 'error');
+      return;
+    }
+    const html = buildCoachInvoiceDocumentHtml(invoiceData);
+    const blob = new Blob([html], { type: 'application/msword;charset=utf-8' });
+    triggerBlobDownload(blob, `invoice-${sanitizeFileName(coach.name, 'coach')}-${invoiceMonth}.doc`);
+    setCoachInvoiceStatus(`Invoice generated for ${coach.name} (${invoiceData.invoiceMonthLabel}).`, 'success');
+  } catch (err) {
+    console.error('Unable to generate coach invoice', err);
+    setCoachInvoiceStatus(`Unable to generate the invoice: ${err.message || err}`, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = oldText || 'Download Invoice (.doc)';
+    }
+  }
+}
+
 function renderDownloadView() {
   const container = document.getElementById('download-container');
   if (!container) return;
   const students = _cache.students || [];
   const coaches = getKnownCoachNames();
+  const invoiceCoaches = getInvoiceCoachProfiles();
+  const selectedInvoiceCoach = getInvoiceSelectedCoach();
+  const invoiceDraftData = selectedInvoiceCoach ? getInvoiceDraftForCoach(selectedInvoiceCoach) : normalizeCoachInvoiceDefaults();
+  const invoicePreviewData = selectedInvoiceCoach ? buildCoachInvoiceData(selectedInvoiceCoach, invoiceMonth, invoiceDraftData) : null;
+  const invoiceStatusHtml = invoiceStatusMessage
+    ? `<div id="coach-invoice-status" style="display:block;font-size:13px;margin-top:12px;color:${invoiceStatusTone === 'error' ? '#B91C1C' : invoiceStatusTone === 'success' ? '#166534' : 'var(--gray-500)'}">${esc(invoiceStatusMessage)}</div>`
+    : `<div id="coach-invoice-status" style="display:none;font-size:13px;margin-top:12px"></div>`;
+
   container.innerHTML = `
     <div class="dashboard-header">
       <div><h1>Download &amp; Import</h1><p>Export backups and import historical student files through ${fmtDate(localDateStr(new Date()))}</p></div>
@@ -3753,7 +4164,97 @@ function renderDownloadView() {
       </div>
       <div id="student-excel-import-status" style="display:none;font-size:13px;margin-top:12px"></div>
       <input type="file" id="student-excel-upload" accept=".xls,.xlsx,.xlsm,.html,.htm" onchange="handleStudentExcelChosen(event)" style="display:none">
+    </div>
+    <div style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:18px 20px;box-shadow:var(--shadow-sm);margin-top:14px">
+      <div style="display:flex;align-items:flex-start;gap:14px;justify-content:space-between;flex-wrap:wrap">
+        <div>
+          <div style="font-size:16px;font-weight:800;color:var(--gray-800)">Coach Invoice Generator</div>
+          <div style="font-size:13px;color:var(--gray-500);margin-top:4px">Generate a monthly coach invoice from logged sessions and save reusable billing defaults for each coach.</div>
+        </div>
+        ${selectedInvoiceCoach ? `
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-secondary" onclick="saveCoachInvoiceDefaults()">Save Coach Billing Defaults</button>
+            <button class="btn btn-primary" id="btn-download-coach-invoice" onclick="downloadCoachInvoice()">Download Invoice (.doc)</button>
+          </div>` : ''}
+      </div>
+      ${invoiceStatusHtml}
+      ${invoiceCoaches.length ? `
+        <div style="display:grid;grid-template-columns:minmax(320px,380px) minmax(0,1fr);gap:18px;align-items:start;margin-top:16px">
+          <div style="display:grid;gap:14px">
+            <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:14px">
+              <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div class="ff">
+                  <label>Coach *</label>
+                  <select onchange="setInvoiceCoach(this.value)">
+                    ${invoiceCoaches.map(coach => `<option value="${esc(coach.id)}" ${selectedInvoiceCoach?.id === coach.id ? 'selected' : ''}>${esc(coach.name)}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="ff">
+                  <label>Invoice Month *</label>
+                  <input type="month" value="${esc(invoiceMonth)}" onchange="setInvoiceMonth(this.value)">
+                </div>
+              </div>
+            </div>
+            <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:14px">
+              <div style="font-size:14px;font-weight:800;color:var(--gray-800);margin-bottom:12px">Coach Billing Defaults</div>
+              <div style="display:grid;gap:12px">
+                <div class="ff">
+                  <label>Address</label>
+                  <textarea rows="4" oninput="setInvoiceDraftField('address',this.value)">${esc(invoiceDraftData.address || '')}</textarea>
+                </div>
+                <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                  <div class="ff">
+                    <label>Contact Number</label>
+                    <input type="text" value="${esc(invoiceDraftData.contactNumber || '')}" oninput="setInvoiceDraftField('contactNumber',this.value)">
+                  </div>
+                  <div class="ff">
+                    <label>Email</label>
+                    <input type="email" value="${esc(invoiceDraftData.email || '')}" oninput="setInvoiceDraftField('email',this.value)">
+                  </div>
+                </div>
+                <div class="ff">
+                  <label>Rate per Session (USD) *</label>
+                  <input type="number" min="0" step="0.01" value="${esc(invoiceDraftData.rate || '')}" oninput="setInvoiceDraftField('rate',this.value)">
+                </div>
+                <div class="ff">
+                  <label>Payment Method</label>
+                  <input type="text" value="${esc(invoiceDraftData.paymentMethod || '')}" oninput="setInvoiceDraftField('paymentMethod',this.value)" placeholder="e.g. Bank transfer, Wise, PayPal">
+                </div>
+                <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                  <div class="ff">
+                    <label>Account Holder</label>
+                    <input type="text" value="${esc(invoiceDraftData.accountHolder || '')}" oninput="setInvoiceDraftField('accountHolder',this.value)">
+                  </div>
+                  <div class="ff">
+                    <label>Account Number</label>
+                    <input type="text" value="${esc(invoiceDraftData.accountNumber || '')}" oninput="setInvoiceDraftField('accountNumber',this.value)">
+                  </div>
+                </div>
+                <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                  <div class="ff">
+                    <label>Account Type</label>
+                    <input type="text" value="${esc(invoiceDraftData.accountType || '')}" oninput="setInvoiceDraftField('accountType',this.value)">
+                  </div>
+                  <div class="ff">
+                    <label>Routing Number</label>
+                    <input type="text" value="${esc(invoiceDraftData.routingNumber || '')}" oninput="setInvoiceDraftField('routingNumber',this.value)">
+                  </div>
+                </div>
+                <div class="ff">
+                  <label>Bank Name and Address</label>
+                  <textarea rows="4" oninput="setInvoiceDraftField('bankNameAddress',this.value)">${esc(invoiceDraftData.bankNameAddress || '')}</textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="coach-invoice-preview">${buildCoachInvoicePreview(invoicePreviewData)}</div>
+        </div>` : `
+        <div style="margin-top:16px;padding:18px;border:1px dashed var(--gray-300);border-radius:8px;color:var(--gray-500);font-size:13px">
+          Add at least one coach profile before generating invoices.
+        </div>`}
     </div>` : ''}`;
+
+  setCoachInvoiceStatus(invoiceStatusMessage, invoiceStatusTone);
 }
 
 const GUIDE_CONTENT = {
