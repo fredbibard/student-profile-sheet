@@ -2400,37 +2400,58 @@ function renderAttendanceView() {
     [attendanceDateFrom, attendanceDateTo] = [attendanceDateTo, attendanceDateFrom];
   }
 
-  const students = DB.all();
+  const coachView = isCoachUser();
+  const students = coachView
+    ? (_cache.students || []).filter(s => canCurrentUserAccessStudent(s))
+    : DB.all();
   const byStudent = {};
 
   students.forEach(s => {
+    const coachAccess = coachView ? getCoachStudentAccess(s, _coachName) : null;
+    if (coachView && !coachAccess?.canView) return;
+    const limitedWindows = coachView && coachAccess && !coachAccess.isCurrent ? coachAccess.windows : null;
+
     getAllStudentSessions(s).forEach(sess => {
+      const sessionDate = sess.date || '';
+      if (limitedWindows && !isDateWithinCoachWindows(sessionDate, limitedWindows)) return;
+
       const category = attendanceCategory(sess);
-      if (!category || !attendanceFilterMatches(sess.date || '')) return;
+      if (!category || !attendanceFilterMatches(sessionDate)) return;
       if (!byStudent[s.id]) {
         byStudent[s.id] = {
           id: s.id,
           name: s.fullName || s.name || 'Unnamed student',
-          coach: s.coach || '',
+          coach: currentAssignedCoach(s) || s.coach || '',
           attended: 0,
           reschedule: 0,
           missed: 0,
-          entries: []
+          entries: [],
+          accessLabel: coachView ? (coachAccess?.isCurrent ? 'Current Student' : 'Previously Coached') : '',
+          accessTone: coachView ? (coachAccess?.isCurrent ? 'current' : 'previous') : '',
+          accessSummary: coachView && !coachAccess?.isCurrent ? formatCoachWindowsSummary(limitedWindows || []) : ''
         };
       }
       byStudent[s.id][category]++;
       byStudent[s.id].entries.push({
-        date: sess.date || '',
+        date: sessionDate,
         label: attendanceStatusLabel(sess),
         category,
-        coach: sess.coach || getCoachOnDate(s, sess.date) || s.coach || ''
+        coach: sess.coach || getCoachOnDate(s, sessionDate) || s.coach || ''
       });
     });
   });
 
   const searchQ = attendanceSearchTerm.trim().toLowerCase();
   const filteredRows = Object.values(byStudent)
-    .filter(row => !searchQ || row.name.toLowerCase().includes(searchQ))
+    .filter(row => {
+      if (!searchQ) return true;
+      return [
+        row.name,
+        row.coach,
+        row.accessLabel,
+        row.accessSummary
+      ].some(value => String(value || '').toLowerCase().includes(searchQ));
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
   const totals = filteredRows.reduce((acc, row) => {
     acc.attended += row.attended;
@@ -2451,11 +2472,20 @@ function renderAttendanceView() {
           }[entry.category];
           return `<span title="${esc(entry.coach || '')}" style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;background:${colors[0]};color:${colors[1]};border:1px solid ${colors[2]};font-size:11px;font-weight:700;white-space:nowrap">${fmtDate(entry.date)} - ${esc(entry.label)}</span>`;
         }).join('');
+      const badgeColors = row.accessTone === 'previous'
+        ? { bg: '#FEF3C7', text: '#92400E', border: '#FCD34D', subtext: '#B45309' }
+        : { bg: '#DCFCE7', text: '#166534', border: '#86EFAC', subtext: '#15803D' };
+      const accessMeta = row.accessLabel ? `
+        <div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-top:6px">
+          <span style="display:inline-flex;align-items:center;padding:3px 8px;border-radius:99px;background:${badgeColors.bg};color:${badgeColors.text};border:1px solid ${badgeColors.border};font-size:11px;font-weight:800;white-space:nowrap">${esc(row.accessLabel)}</span>
+          ${row.accessSummary ? `<span style="font-size:11px;line-height:1.4;color:${badgeColors.subtext}">Visible period: ${esc(row.accessSummary)}</span>` : ''}
+        </div>` : '';
       return `<tr style="border-bottom:1px solid var(--gray-200)">
         <td style="padding:12px 14px;font-weight:700;color:var(--gray-800);vertical-align:top;width:220px">
           <button onclick="goStudent('${row.id}')" style="display:block;width:100%;text-align:left;line-height:1.35;background:none;border:none;color:var(--gray-800);font:inherit;font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:2px;padding:0">
             ${esc(row.name)}
           </button>
+          ${accessMeta}
         </td>
         <td style="padding:12px 14px;color:var(--gray-600);font-size:13px;vertical-align:top;line-height:1.35;width:120px">${esc(row.coach || '-')}</td>
         <td style="padding:12px 14px;text-align:center;font-weight:800;color:#14532D;vertical-align:top">${row.attended}</td>
@@ -4894,8 +4924,8 @@ function renderDashboard() {
       return;
     }
 
-    const currentStudents = withMeta.filter(meta => meta.isCurrentCoach);
-    const previousStudents = withMeta.filter(meta => !meta.isCurrentCoach);
+    const currentStudents = withMeta.filter(meta => meta.isCurrentCoach && !meta.s.withdrawn);
+    const previousStudents = withMeta.filter(meta => !meta.isCurrentCoach || meta.s.withdrawn);
     let filtersPlaced = false;
 
     const buildCoachSection = (title, subtitle, items, emptyMessage, marginTop = 0) => {
@@ -4925,7 +4955,7 @@ function renderDashboard() {
       )}
       ${buildCoachSection(
         'Previously Coached Students',
-        'Students you coached before they were reassigned or moved on.',
+        'Students you coached before they were reassigned or withdrawn.',
         previousStudents,
         'No previously coached students match the current filters.',
         16
