@@ -405,6 +405,9 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
     <div class="nav-tab" data-tab="invoice" onclick="switchTab('invoice')">
       <span class="nav-tab-icon">&#128196;</span><span>Invoice Generator</span>
     </div>
+    <div class="nav-tab" data-tab="speaking-tests" onclick="switchTab('speaking-tests')">
+      <span class="nav-tab-icon">&#127908;</span><span>Speaking Tests</span>
+    </div>
     <div class="nav-tab" data-tab="guide" onclick="switchTab('guide')">
       <span class="nav-tab-icon">&#128214;</span><span>User Guide</span>
     </div>
@@ -453,6 +456,10 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
     <!-- INVOICE VIEW -->
     <div id="view-invoice" class="view">
       <div class="container" id="invoice-container"></div>
+    </div>
+    <!-- SPEAKING TESTS VIEW -->
+    <div id="view-speaking-tests" class="view">
+      <div class="container" id="speaking-tests-container"></div>
     </div>
     <!-- GUIDE VIEW -->
     <div id="view-guide" class="view">
@@ -932,6 +939,48 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-coach-bonus">
+  <div class="modal" style="max-width:760px">
+    <div class="modal-hdr">
+      <span class="modal-title" id="coach-bonus-modal-title">Coach Bonuses</span>
+      <button class="modal-close" onclick="closeModal('modal-coach-bonus')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="coach-bonus-status" style="display:none;font-size:13px;margin-bottom:12px"></div>
+      <div style="font-size:13px;color:var(--gray-500);line-height:1.6;margin-bottom:16px">
+        Bonuses saved here are tied to the coach and automatically show up in invoices for the matching month.
+      </div>
+      <div id="coach-bonus-list" style="display:grid;gap:10px;margin-bottom:16px"></div>
+      <div style="border:1px solid var(--gray-200);border-radius:8px;padding:16px;background:#F9FAFB">
+        <div style="font-size:14px;font-weight:800;color:var(--gray-800);margin-bottom:12px" id="coach-bonus-form-title">Add Bonus</div>
+        <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="ff">
+            <label>Date *</label>
+            <input type="date" id="coach-bonus-date">
+          </div>
+          <div class="ff">
+            <label>Amount (USD) *</label>
+            <input type="number" id="coach-bonus-amount" min="0" step="0.01" placeholder="0.00">
+          </div>
+        </div>
+        <div class="ff" style="margin-top:12px">
+          <label>Description</label>
+          <input type="text" id="coach-bonus-description" placeholder="e.g. Monthly coaching bonus">
+        </div>
+        <div class="ff" style="margin-top:12px">
+          <label>Notes</label>
+          <textarea id="coach-bonus-notes" rows="3" placeholder="Optional note for this bonus"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-secondary" onclick="resetCoachBonusForm()">Clear</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-coach-bonus')">Close</button>
+      <button class="btn btn-primary" id="btn-save-coach-bonus" onclick="saveCoachBonus()">Save Bonus</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // â”€â”€â”€ UTILS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const uid = () => Math.random().toString(36).slice(2, 11);
@@ -1078,6 +1127,43 @@ function defaultCoachInvoiceDefaults() {
   };
 }
 
+function normalizeCoachWorkDate(value) {
+  return normalizeImportedDate(value);
+}
+
+function normalizeCoachWorkAmount(value) {
+  if (typeof value === 'number') return roundCurrency(Math.max(0, value));
+  const cleaned = String(value == null ? '' : value).replace(/[^0-9.-]+/g, '').trim();
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? roundCurrency(Math.max(0, parsed)) : 0;
+}
+
+function normalizeCoachSpeakingTestEntry(raw = {}) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const minutes = parseImportedInteger(source.minutes);
+  return {
+    id: String(source.id || uid()).trim(),
+    date: normalizeCoachWorkDate(source.date),
+    label: String(source.label || source.task || source.studentName || '').trim(),
+    minutes: Number.isFinite(minutes) && minutes > 0 ? minutes : 0,
+    notes: String(source.notes || '').trim()
+  };
+}
+
+function normalizeCoachInvoiceExtraEntry(raw = {}) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const type = String(source.type || '').trim().toLowerCase() === 'bonus' ? 'bonus' : 'extra';
+  const description = String(source.description || source.label || (type === 'bonus' ? 'Coach Bonus' : 'Additional Task')).trim();
+  return {
+    id: String(source.id || uid()).trim(),
+    type,
+    date: normalizeCoachWorkDate(source.date),
+    description: description || (type === 'bonus' ? 'Coach Bonus' : 'Additional Task'),
+    amount: normalizeCoachWorkAmount(source.amount),
+    notes: String(source.notes || '').trim()
+  };
+}
+
 function normalizeCoachInvoiceDefaults(raw = {}) {
   const source = raw && typeof raw === 'object' ? raw : {};
   return {
@@ -1095,11 +1181,26 @@ function normalizeCoachInvoiceDefaults(raw = {}) {
 }
 
 function normalizeCoachRecord(coach = {}) {
+  const speakingTests = Array.isArray(coach.speakingTests)
+    ? coach.speakingTests
+        .map(normalizeCoachSpeakingTestEntry)
+        .filter(entry => entry.date || entry.label || entry.minutes || entry.notes)
+        .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (a.label || '').localeCompare(b.label || ''))
+    : [];
+  const invoiceExtras = Array.isArray(coach.invoiceExtras)
+    ? coach.invoiceExtras
+        .map(normalizeCoachInvoiceExtraEntry)
+        .filter(entry => entry.date || entry.description || entry.amount || entry.notes)
+        .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (a.description || '').localeCompare(b.description || ''))
+    : [];
   return {
     ...coach,
     id: coach.id || '',
     name: String(coach.name || '').trim(),
-    invoiceDefaults: normalizeCoachInvoiceDefaults(coach.invoiceDefaults || {})
+    invoiceDefaults: normalizeCoachInvoiceDefaults(coach.invoiceDefaults || {}),
+    speakingTestEnabled: coach.speakingTestEnabled === true,
+    speakingTests,
+    invoiceExtras
   };
 }
 
@@ -1160,10 +1261,12 @@ function applyRoleUi() {
   const coachesTab = document.querySelector('[data-tab="coaches"]');
   const downloadTab = document.querySelector('[data-tab="download"]');
   const invoiceTab = document.querySelector('[data-tab="invoice"]');
+  const speakingTestsTab = document.querySelector('[data-tab="speaking-tests"]');
   const newStudentBtn = document.getElementById('btn-new-student');
   if (coachesTab) coachesTab.style.display = isCoach ? 'none' : '';
   if (downloadTab) downloadTab.style.display = isCoach ? 'none' : '';
   if (invoiceTab) invoiceTab.style.display = isCoach ? 'none' : '';
+  if (speakingTestsTab) speakingTestsTab.style.display = (!isCoach || canCurrentUserAccessSpeakingTests()) ? '' : 'none';
   if (newStudentBtn) newStudentBtn.style.display = isCoach ? 'none' : '';
 }
 
@@ -1439,6 +1542,7 @@ function startSync() {
     } else if (activeView === 'attendance') renderAttendanceView();
     else if (activeView === 'download') renderDownloadView();
     else if (activeView === 'invoice') renderInvoiceView();
+    else if (activeView === 'speaking-tests') renderSpeakingTestsView();
     else if (activeView === 'coaches') renderCoachView();
     else renderDashboard();
   }, console.error));
@@ -1450,9 +1554,15 @@ function startSync() {
     })
       .filter(c => c && c.name)
       .sort((a, b) => a.name.localeCompare(b.name));
+    applyRoleUi();
+    if (_userRole === 'coach' && activeView === 'speaking-tests' && !canCurrentUserAccessSpeakingTests()) {
+      goDashboard();
+      return;
+    }
     if (activeView === 'coaches') switchTab('coaches');
     else if (activeView === 'download') renderDownloadView();
     else if (activeView === 'invoice') renderInvoiceView();
+    else if (activeView === 'speaking-tests') renderSpeakingTestsView();
   }, console.error));
 
   _syncUnsubs.push(fsdb.collection('meta').doc('app').onSnapshot(snapshot => {
@@ -1462,6 +1572,7 @@ function startSync() {
     _cache.guideContent = normalizeGuideContent(data.guideContent || null);
     if (activeView === 'download') renderDownloadView();
     else if (activeView === 'invoice') renderInvoiceView();
+    else if (activeView === 'speaking-tests') renderSpeakingTestsView();
     else if (activeView === 'guide') renderGuideView();
   }, console.error));
 
@@ -1479,6 +1590,7 @@ function startSync() {
     if (activeView === 'coaches') switchTab('coaches');
     else if (activeView === 'download') renderDownloadView();
     else if (activeView === 'invoice') renderInvoiceView();
+    else if (activeView === 'speaking-tests') renderSpeakingTestsView();
   }, console.error));
 }
 
@@ -1534,7 +1646,7 @@ auth.onAuthStateChanged(async user => {
 
   // Apply role-based UI restrictions
   applyRoleUi();
-  if (_userRole === 'coach' && (activeTab === 'coaches' || activeTab === 'download' || activeTab === 'invoice')) goDashboard();
+  if (_userRole === 'coach' && (activeTab === 'coaches' || activeTab === 'download' || activeTab === 'invoice' || (activeTab === 'speaking-tests' && !canCurrentUserAccessSpeakingTests()))) goDashboard();
 
   // Show header + body, hide login
   loginScreen.style.display = 'none';
@@ -1804,6 +1916,25 @@ function getSelectableCoachNames() {
     .sort((a, b) => a.localeCompare(b));
 }
 
+function getCoachRecordById(id) {
+  return DB.allCoaches().find(coach => coach.id === id) || null;
+}
+
+function getCoachRecordByName(name) {
+  const key = accessKey(name);
+  return DB.allCoaches().find(coach => accessKey(coach.name) === key) || null;
+}
+
+function getCurrentCoachProfile() {
+  return _coachName ? getCoachRecordByName(_coachName) : null;
+}
+
+function canCurrentUserAccessSpeakingTests() {
+  if (isAdminUser()) return true;
+  if (!isCoachUser()) return false;
+  return !!getCurrentCoachProfile()?.speakingTestEnabled;
+}
+
 function getAllStudentSessions(student) {
   return [
     ...(student?.sessions || []),
@@ -1941,6 +2072,14 @@ let invoiceDraftCoachId = '';
 let invoiceDraftDirty = false;
 let invoiceStatusMessage = '';
 let invoiceStatusTone = 'info';
+let invoiceExtraEditId = '';
+let speakingTestCoachId = '';
+let speakingTestMonth = localDateStr(new Date()).slice(0, 7);
+let speakingTestEditId = '';
+let speakingTestStatusMessage = '';
+let speakingTestStatusTone = 'info';
+let coachBonusCtxId = '';
+let coachBonusEditId = '';
 let sessionCtx = null; // { studentId, week, slot, editId }
 let pendingDeleteId = null;
 let pendingDeleteType = null; // 'student' | 'session'
@@ -2301,6 +2440,7 @@ function switchTab(tab) {
     document.getElementById('view-attendance').classList.remove('active');
     document.getElementById('view-download').classList.remove('active');
     document.getElementById('view-invoice').classList.remove('active');
+    document.getElementById('view-speaking-tests').classList.remove('active');
     document.getElementById('view-guide').classList.remove('active');
     renderCoachView();
   } else if (tab === 'attendance') {
@@ -2312,6 +2452,7 @@ function switchTab(tab) {
     document.getElementById('view-attendance').classList.add('active');
     document.getElementById('view-download').classList.remove('active');
     document.getElementById('view-invoice').classList.remove('active');
+    document.getElementById('view-speaking-tests').classList.remove('active');
     document.getElementById('view-guide').classList.remove('active');
     renderAttendanceView();
   } else if (tab === 'download') {
@@ -2324,6 +2465,7 @@ function switchTab(tab) {
     document.getElementById('view-attendance').classList.remove('active');
     document.getElementById('view-download').classList.add('active');
     document.getElementById('view-invoice').classList.remove('active');
+    document.getElementById('view-speaking-tests').classList.remove('active');
     document.getElementById('view-guide').classList.remove('active');
     renderDownloadView();
   } else if (tab === 'invoice') {
@@ -2336,8 +2478,22 @@ function switchTab(tab) {
     document.getElementById('view-attendance').classList.remove('active');
     document.getElementById('view-download').classList.remove('active');
     document.getElementById('view-invoice').classList.add('active');
+    document.getElementById('view-speaking-tests').classList.remove('active');
     document.getElementById('view-guide').classList.remove('active');
     renderInvoiceView();
+  } else if (tab === 'speaking-tests') {
+    if (_userRole === 'coach' && !canCurrentUserAccessSpeakingTests()) { goDashboard(); return; }
+    activeView = 'speaking-tests';
+    activeStudentId = null;
+    document.getElementById('view-dashboard').classList.remove('active');
+    document.getElementById('view-student').classList.remove('active');
+    document.getElementById('view-coaches').classList.remove('active');
+    document.getElementById('view-attendance').classList.remove('active');
+    document.getElementById('view-download').classList.remove('active');
+    document.getElementById('view-invoice').classList.remove('active');
+    document.getElementById('view-speaking-tests').classList.add('active');
+    document.getElementById('view-guide').classList.remove('active');
+    renderSpeakingTestsView();
   } else if (tab === 'guide') {
     activeView = 'guide';
     activeStudentId = null;
@@ -2348,6 +2504,7 @@ function switchTab(tab) {
     document.getElementById('view-attendance').classList.remove('active');
     document.getElementById('view-download').classList.remove('active');
     document.getElementById('view-invoice').classList.remove('active');
+    document.getElementById('view-speaking-tests').classList.remove('active');
     document.getElementById('view-guide').classList.add('active');
     renderGuideView();
   } else {
@@ -2355,6 +2512,7 @@ function switchTab(tab) {
     document.getElementById('view-attendance').classList.remove('active');
     document.getElementById('view-download').classList.remove('active');
     document.getElementById('view-invoice').classList.remove('active');
+    document.getElementById('view-speaking-tests').classList.remove('active');
     document.getElementById('view-guide').classList.remove('active');
     if (activeView === 'student' && activeStudentId) {
       document.getElementById('view-student').classList.add('active');
@@ -2406,7 +2564,7 @@ function renameCoach(id) {
   const exists = DB.allCoaches().find(c => accessKey(c.name) === accessKey(trimmed) && c.id !== id);
   if (exists) { alert('A coach with that name already exists.'); return; }
 
-  DB.upsertCoach({ id, name: trimmed });
+  DB.upsertCoach({ ...coach, id, name: trimmed });
 
   _cache.students.forEach(s => {
     let changed = false;
@@ -3811,6 +3969,27 @@ function getInvoiceCoachProfiles() {
   return DB.allCoaches().filter(coach => coach && coach.name && !isDeletedCoachName(coach.name));
 }
 
+function getSpeakingTestCoachProfiles() {
+  return getInvoiceCoachProfiles();
+}
+
+function getSpeakingTestSelectedCoach() {
+  if (isCoachUser()) {
+    const coach = getCurrentCoachProfile();
+    speakingTestCoachId = coach?.id || '';
+    return canCurrentUserAccessSpeakingTests() ? coach : null;
+  }
+  const coaches = getSpeakingTestCoachProfiles();
+  if (!coaches.length) {
+    speakingTestCoachId = '';
+    return null;
+  }
+  if (!speakingTestCoachId || !coaches.some(coach => coach.id === speakingTestCoachId)) {
+    speakingTestCoachId = coaches[0].id;
+  }
+  return coaches.find(coach => coach.id === speakingTestCoachId) || null;
+}
+
 function getInvoiceSelectedCoach() {
   const coaches = getInvoiceCoachProfiles();
   if (!coaches.length) {
@@ -3818,6 +3997,7 @@ function getInvoiceSelectedCoach() {
     invoiceDraft = null;
     invoiceDraftCoachId = '';
     invoiceDraftDirty = false;
+    invoiceExtraEditId = '';
     return null;
   }
   if (!invoiceCoachId || !coaches.some(coach => coach.id === invoiceCoachId)) {
@@ -3825,6 +4005,7 @@ function getInvoiceSelectedCoach() {
     invoiceDraft = null;
     invoiceDraftCoachId = '';
     invoiceDraftDirty = false;
+    invoiceExtraEditId = '';
   }
   return coaches.find(coach => coach.id === invoiceCoachId) || null;
 }
@@ -3857,17 +4038,74 @@ function setCoachInvoiceStatus(message = '', tone = 'info') {
   el.style.color = tone === 'error' ? '#B91C1C' : tone === 'success' ? '#166534' : 'var(--gray-500)';
 }
 
+function setSpeakingTestStatus(message = '', tone = 'info') {
+  speakingTestStatusMessage = message || '';
+  speakingTestStatusTone = tone || 'info';
+  const el = document.getElementById('speaking-test-status');
+  if (!el) return;
+  el.style.display = message ? 'block' : 'none';
+  el.textContent = message;
+  el.style.color = tone === 'error' ? '#B91C1C' : tone === 'success' ? '#166534' : 'var(--gray-500)';
+}
+
+function setCoachBonusStatus(message = '', tone = 'info') {
+  const el = document.getElementById('coach-bonus-status');
+  if (!el) return;
+  el.style.display = message ? 'block' : 'none';
+  el.textContent = message;
+  el.style.color = tone === 'error' ? '#B91C1C' : tone === 'success' ? '#166534' : 'var(--gray-500)';
+}
+
+function getCoachSpeakingTestEntries(coach, ym = '') {
+  const safeCoach = normalizeCoachRecord(coach || {});
+  return (safeCoach.speakingTests || [])
+    .filter(entry => entry && entry.date && (!ym || entry.date.slice(0, 7) === ym))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (a.label || '').localeCompare(b.label || ''));
+}
+
+function getCoachInvoiceExtras(coach, ym = '') {
+  const safeCoach = normalizeCoachRecord(coach || {});
+  return (safeCoach.invoiceExtras || [])
+    .filter(entry => entry && entry.date && (!ym || entry.date.slice(0, 7) === ym))
+    .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.description || '').localeCompare(b.description || ''));
+}
+
+function getCoachBonusEntries(coach) {
+  return getCoachInvoiceExtras(coach).filter(entry => entry.type === 'bonus')
+    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (a.description || '').localeCompare(b.description || ''));
+}
+
+function getMonthSeedDate(ym) {
+  return /^\d{4}-\d{2}$/.test(ym || '') ? `${ym}-01` : localDateStr(new Date());
+}
+
+function formatMinutesLabel(totalMinutes) {
+  return `${Math.round(Number(totalMinutes) || 0)} min`;
+}
+
+function invoiceDetailLinesHtml(lines = []) {
+  const safeLines = (lines || []).filter(Boolean);
+  return safeLines.length ? safeLines.map(line => esc(line).replace(/\n/g, '<br>')).join('<br>') : '-';
+}
+
+function invoiceDetailLinesText(lines = []) {
+  const safeLines = (lines || []).filter(Boolean);
+  return safeLines.length ? safeLines.join('\n') : '-';
+}
+
 function setInvoiceCoach(id) {
   invoiceCoachId = id || '';
   invoiceDraft = null;
   invoiceDraftCoachId = '';
   invoiceDraftDirty = false;
+  invoiceExtraEditId = '';
   setCoachInvoiceStatus('');
   renderInvoiceView();
 }
 
 function setInvoiceMonth(value) {
   invoiceMonth = value || localDateStr(new Date()).slice(0, 7);
+  invoiceExtraEditId = '';
   setCoachInvoiceStatus('');
   renderInvoiceView();
 }
@@ -3881,12 +4119,41 @@ function setInvoiceDraftField(field, value) {
   updateCoachInvoicePreview();
 }
 
+function setSpeakingTestCoach(id) {
+  speakingTestCoachId = id || '';
+  speakingTestEditId = '';
+  setSpeakingTestStatus('');
+  renderSpeakingTestsView();
+}
+
+function setSpeakingTestMonth(value) {
+  speakingTestMonth = value || localDateStr(new Date()).slice(0, 7);
+  speakingTestEditId = '';
+  setSpeakingTestStatus('');
+  renderSpeakingTestsView();
+}
+
+function setSpeakingTestEdit(id = '') {
+  speakingTestEditId = id || '';
+  renderSpeakingTestsView();
+}
+
+function resetInvoiceExtraForm() {
+  invoiceExtraEditId = '';
+  renderInvoiceView();
+}
+
+function setInvoiceExtraEdit(id = '') {
+  invoiceExtraEditId = id || '';
+  renderInvoiceView();
+}
+
 function generateCoachInvoiceNumber(coach, ym) {
   const slug = (coach?.name || 'coach').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 10) || 'COACH';
   return `SLA-${slug}-${String(ym || '').replace('-', '')}`;
 }
 
-function getCoachInvoiceLineItems(coachName, ym) {
+function getCoachInvoiceSessionLineItems(coachName, ym) {
   if (!coachName || !ym) return [];
   const itemsByStudent = {};
 
@@ -3915,10 +4182,15 @@ function getCoachInvoiceLineItems(coachName, ym) {
 
   return Object.values(itemsByStudent)
     .map(item => ({
-      ...item,
-      dates: item.dates.sort((a, b) => a.localeCompare(b))
+      kind: 'session',
+      description: item.studentName,
+      detailLines: item.dates.sort((a, b) => a.localeCompare(b)).map(fmtDate),
+      qtyNumeric: item.quantity,
+      qtyDisplay: formatSessionAmount(item.quantity),
+      sortOrder: 0,
+      sortLabel: item.studentName.toLowerCase()
     }))
-    .sort((a, b) => a.studentName.localeCompare(b.studentName));
+    .sort((a, b) => a.description.localeCompare(b.description));
 }
 
 function buildCoachInvoiceData(coach, ym, draft = null) {
@@ -3926,14 +4198,47 @@ function buildCoachInvoiceData(coach, ym, draft = null) {
   const safeDraft = normalizeCoachInvoiceDefaults(draft || safeCoach.invoiceDefaults || {});
   const rate = parseFloat(safeDraft.rate);
   const unitRate = Number.isFinite(rate) && rate >= 0 ? rate : 0;
-  const rawLineItems = getCoachInvoiceLineItems(safeCoach.name, ym);
-  const lineItems = rawLineItems.map(item => ({
+  const sessionItems = getCoachInvoiceSessionLineItems(safeCoach.name, ym).map(item => ({
     ...item,
-    total: roundCurrency(item.quantity * unitRate)
+    unitPriceLabel: unitRate > 0 ? formatUsdMoney(unitRate) : '-',
+    total: roundCurrency(item.qtyNumeric * unitRate)
   }));
-  const totalQuantity = roundSessionAmount(lineItems.reduce((sum, item) => sum + item.quantity, 0));
+  const speakingEntries = getCoachSpeakingTestEntries(safeCoach, ym).filter(entry => entry.minutes > 0);
+  const speakingTestMinutes = speakingEntries.reduce((sum, entry) => sum + (entry.minutes || 0), 0);
+  const speakingTestHours = roundSessionAmount(speakingTestMinutes / 60);
+  const speakingTestItem = speakingTestMinutes > 0 ? {
+    kind: 'speaking-test',
+    description: 'Speaking Test Tasks',
+    detailLines: [
+      `${monthLabel(ym)} - ${speakingEntries.length} task${speakingEntries.length !== 1 ? 's' : ''}`,
+      `${formatMinutesLabel(speakingTestMinutes)} total`
+    ],
+    qtyNumeric: speakingTestHours,
+    qtyDisplay: formatMinutesLabel(speakingTestMinutes),
+    unitPriceLabel: unitRate > 0 ? `${formatUsdMoney(unitRate)} / 60 min` : '-',
+    total: roundCurrency(speakingTestHours * unitRate),
+    sortOrder: 1,
+    sortLabel: `${ym}-speaking-tests`
+  } : null;
+  const invoiceExtras = getCoachInvoiceExtras(safeCoach, ym).map(entry => ({
+    kind: entry.type === 'bonus' ? 'bonus' : 'extra',
+    description: entry.description || (entry.type === 'bonus' ? 'Coach Bonus' : 'Additional Task'),
+    detailLines: [entry.date ? fmtDate(entry.date) : '', entry.notes || ''].filter(Boolean),
+    qtyNumeric: 1,
+    qtyDisplay: '1',
+    unitPriceLabel: formatUsdMoney(entry.amount),
+    total: roundCurrency(entry.amount),
+    sortOrder: entry.type === 'bonus' ? 3 : 2,
+    sortLabel: `${entry.date || ''}-${(entry.description || '').toLowerCase()}`
+  }));
+  const lineItems = [...sessionItems, ...(speakingTestItem ? [speakingTestItem] : []), ...invoiceExtras]
+    .sort((a, b) => (a.sortOrder - b.sortOrder) || (a.sortLabel || '').localeCompare(b.sortLabel || ''));
+  const totalQuantity = roundSessionAmount(sessionItems.reduce((sum, item) => sum + item.qtyNumeric, 0));
+  const extraTotal = roundCurrency(invoiceExtras.filter(item => item.kind === 'extra').reduce((sum, item) => sum + item.total, 0));
+  const bonusTotal = roundCurrency(invoiceExtras.filter(item => item.kind === 'bonus').reduce((sum, item) => sum + item.total, 0));
   const totalAmount = roundCurrency(lineItems.reduce((sum, item) => sum + item.total, 0));
   const todayIso = localDateStr(new Date());
+  const requiresRate = sessionItems.length > 0 || speakingTestMinutes > 0;
 
   return {
     coach: safeCoach,
@@ -3946,25 +4251,29 @@ function buildCoachInvoiceData(coach, ym, draft = null) {
     unitRate,
     lineItems,
     totalQuantity,
+    speakingTestMinutes,
+    extraTotal,
+    bonusTotal,
     totalAmount,
-    hasRate: unitRate > 0
+    requiresRate,
+    hasRate: !requiresRate || unitRate > 0
   };
 }
 
 function buildCoachInvoiceRowsMarkup(data) {
   if (!data.lineItems.length) {
     return `<tr>
-      <td colspan="5" style="padding:16px 12px;border:1px solid #D1D5DB;text-align:center;color:#6B7280;font-size:13px">No payable logged sessions found for ${esc(data.invoiceMonthLabel)}.</td>
+      <td colspan="5" style="padding:16px 12px;border:1px solid #1F2937;text-align:center;color:#6B7280;font-size:13px">No billable work found for ${esc(data.invoiceMonthLabel)}.</td>
     </tr>`;
   }
 
   return data.lineItems.map(item => `
     <tr>
-      <td style="padding:10px 12px;border:1px solid #D1D5DB;vertical-align:top;font-size:13px">${esc(item.studentName)}</td>
-      <td style="padding:10px 12px;border:1px solid #D1D5DB;vertical-align:top;font-size:13px;line-height:1.6">${item.dates.map(date => esc(fmtDate(date))).join('<br>')}</td>
-      <td style="padding:10px 12px;border:1px solid #D1D5DB;vertical-align:top;font-size:13px;text-align:center">${esc(formatSessionAmount(item.quantity))}</td>
-      <td style="padding:10px 12px;border:1px solid #D1D5DB;vertical-align:top;font-size:13px;text-align:right">${formatUsdMoney(data.unitRate)}</td>
-      <td style="padding:10px 12px;border:1px solid #D1D5DB;vertical-align:top;font-size:13px;text-align:right">${formatUsdMoney(item.total)}</td>
+      <td style="padding:10px 12px;border:1px solid #1F2937;vertical-align:top;font-size:12.5px;font-weight:${item.kind === 'session' ? '700' : '600'};color:#111827">${esc(item.description)}</td>
+      <td style="padding:10px 12px;border:1px solid #1F2937;vertical-align:top;font-size:12.5px;line-height:1.55;color:#374151">${invoiceDetailLinesHtml(item.detailLines)}</td>
+      <td style="padding:10px 12px;border:1px solid #1F2937;vertical-align:top;font-size:12.5px;text-align:center;color:#111827">${esc(item.qtyDisplay)}</td>
+      <td style="padding:10px 12px;border:1px solid #1F2937;vertical-align:top;font-size:12.5px;text-align:right;color:#111827">${esc(item.unitPriceLabel || '-')}</td>
+      <td style="padding:10px 12px;border:1px solid #1F2937;vertical-align:top;font-size:12.5px;text-align:right;font-weight:700;color:#111827">${formatUsdMoney(item.total)}</td>
     </tr>
   `).join('');
 }
@@ -3975,42 +4284,53 @@ function buildCoachInvoiceMarkup(data, documentMode = false) {
   }
 
   const draft = data.defaults || normalizeCoachInvoiceDefaults();
-  const outerStyle = documentMode
-    ? 'max-width:920px;margin:0 auto;color:#111827'
-    : 'background:white;border:1px solid var(--gray-200);border-radius:8px;padding:20px;box-shadow:var(--shadow-sm)';
   const warningBlocks = [];
+  const shellStyle = documentMode
+    ? 'max-width:920px;margin:0 auto;color:#111827;font-family:Calibri,Arial,sans-serif'
+    : 'background:white;border:1px solid var(--gray-200);border-radius:8px;padding:20px;box-shadow:var(--shadow-sm)';
+  const billToLines = [
+    'Lingohabit LLC',
+    'Address: 30 N Gould St Ste R, Sheridan, Wyoming, 82801, United States',
+    'Company code (US): EIN 38-4251517',
+    'Email address: frederic@lingohabit.com',
+    'Note: The company is located in the USA so no EU VAT'
+  ];
 
-  if (!data.hasRate) warningBlocks.push('Enter a coach rate to calculate invoice totals.');
-  if (!data.lineItems.length) warningBlocks.push(`No payable logged sessions were found for ${data.invoiceMonthLabel}.`);
+  if (!data.hasRate) warningBlocks.push('Enter a coach rate to price session and speaking test work for this invoice.');
+  if (!data.lineItems.length) warningBlocks.push(`No billable items were found for ${data.invoiceMonthLabel}.`);
 
   return `
     ${!documentMode && warningBlocks.length ? `<div style="display:grid;gap:8px;margin-bottom:14px">${warningBlocks.map(message => `<div style="padding:10px 12px;border-radius:8px;background:#FFFBEB;border:1px solid #FCD34D;color:#92400E;font-size:13px">${esc(message)}</div>`).join('')}</div>` : ''}
     ${!documentMode ? `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
         <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px">
-          <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">Invoice Month</div>
-          <div style="font-size:18px;font-weight:800;color:var(--gray-800);margin-top:4px">${esc(data.invoiceMonthLabel)}</div>
+          <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">Session Qty</div>
+          <div style="font-size:18px;font-weight:900;color:var(--gray-800);margin-top:4px">${esc(formatSessionAmount(data.totalQuantity))}</div>
         </div>
         <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px">
-          <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">Payable Qty</div>
-          <div style="font-size:18px;font-weight:800;color:var(--gray-800);margin-top:4px">${esc(formatSessionAmount(data.totalQuantity))}</div>
+          <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">Speaking Test Time</div>
+          <div style="font-size:18px;font-weight:900;color:var(--gray-800);margin-top:4px">${esc(formatMinutesLabel(data.speakingTestMinutes))}</div>
+        </div>
+        <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px">
+          <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">Manual Additions</div>
+          <div style="font-size:18px;font-weight:900;color:var(--gray-800);margin-top:4px">${formatUsdMoney(data.extraTotal + data.bonusTotal)}</div>
         </div>
         <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px">
           <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">Invoice Total</div>
-          <div style="font-size:18px;font-weight:800;color:var(--green);margin-top:4px">${formatUsdMoney(data.totalAmount)}</div>
+          <div style="font-size:18px;font-weight:900;color:var(--green);margin-top:4px">${formatUsdMoney(data.totalAmount)}</div>
         </div>
       </div>` : ''}
-    <div style="${outerStyle}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;margin-bottom:20px">
-        <div style="flex:1;min-width:260px">
-          <div style="font-size:${documentMode ? '24px' : '22px'};font-weight:900;color:var(--gray-800);margin-bottom:8px">${esc(data.coach.name)}</div>
-          <div style="font-size:13px;line-height:1.6;color:var(--gray-700)">${formatInvoiceMultiline(draft.address) || '-'}</div>
-          <div style="font-size:13px;line-height:1.6;color:var(--gray-700);margin-top:8px">Contact Number: ${esc(draft.contactNumber || '-')}</div>
-          <div style="font-size:13px;line-height:1.6;color:var(--gray-700)">Email: ${esc(draft.email || '-')}</div>
+    <div style="${shellStyle}">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,250px);gap:0;margin-bottom:18px">
+        <div style="border:1px solid #1F2937;border-right:none;padding:16px 18px;min-height:126px">
+          <div style="font-size:${documentMode ? '18px' : '17px'};font-weight:900;color:#111827;margin-bottom:8px">${esc(data.coach.name || 'Coach Name')}</div>
+          <div style="font-size:12px;line-height:1.55;color:#111827">${formatInvoiceMultiline(draft.address) || '-'}</div>
+          <div style="font-size:12px;line-height:1.55;color:#111827;margin-top:8px">Contact Number: ${esc(draft.contactNumber || '-')}</div>
+          <div style="font-size:12px;line-height:1.55;color:#111827">Email: ${esc(draft.email || '-')}</div>
         </div>
-        <div style="min-width:220px">
-          <div style="font-size:${documentMode ? '28px' : '26px'};font-weight:900;color:var(--gray-800);text-transform:uppercase;letter-spacing:.5px">Invoice</div>
-          <div style="margin-top:12px;font-size:13px;line-height:1.8;color:var(--gray-700)">
+        <div style="border:1px solid #1F2937;padding:16px 18px;min-height:126px">
+          <div style="font-size:${documentMode ? '26px' : '24px'};font-weight:900;color:#111827;text-align:center;margin-bottom:12px">Invoice</div>
+          <div style="font-size:12px;line-height:1.7;color:#111827">
             <div><strong>Date:</strong> ${esc(data.invoiceDateLabel)}</div>
             <div><strong>Invoice #:</strong> ${esc(data.invoiceNumber)}</div>
             <div><strong>Invoice Month:</strong> ${esc(data.invoiceMonthLabel)}</div>
@@ -4018,44 +4338,39 @@ function buildCoachInvoiceMarkup(data, documentMode = false) {
         </div>
       </div>
       <div style="margin-bottom:18px">
-        <div style="font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Bill To</div>
-        <div style="padding:12px 14px;border:1px solid #D1D5DB;border-radius:8px;background:${documentMode ? '#FFFFFF' : '#F9FAFB'};font-size:13px;line-height:1.7;color:var(--gray-700)">
-          <div><strong>Lingohabit LLC</strong></div>
-          <div>Address: 30 N Gould St Ste R, Sheridan, Wyoming, 82801, United States</div>
-          <div>Company code (US): EIN 38-4251517</div>
-          <div>Email address: frederic@lingohabit.com</div>
-          <div>Note: The company is located in the USA so no EU VAT</div>
+        <div style="display:inline-block;background:#153A63;color:white;padding:7px 12px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.45px">Bill To:</div>
+        <div style="border:1px solid #1F2937;border-top:none;padding:12px 14px;font-size:12px;line-height:1.6;color:#111827">
+          ${billToLines.map(line => `<div>${esc(line)}</div>`).join('')}
         </div>
       </div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+      <table style="width:100%;border-collapse:collapse;margin-bottom:0">
         <thead>
-          <tr style="background:#F3F4F6">
-            <th style="padding:10px 12px;border:1px solid #D1D5DB;text-align:left;font-size:12px">Student's Complete Name</th>
-            <th style="padding:10px 12px;border:1px solid #D1D5DB;text-align:left;font-size:12px">Session Date</th>
-            <th style="padding:10px 12px;border:1px solid #D1D5DB;text-align:center;font-size:12px">Qty</th>
-            <th style="padding:10px 12px;border:1px solid #D1D5DB;text-align:right;font-size:12px">Unit Price</th>
-            <th style="padding:10px 12px;border:1px solid #D1D5DB;text-align:right;font-size:12px">Total (USD)</th>
+          <tr style="background:#153A63;color:white">
+            <th style="padding:10px 12px;border:1px solid #1F2937;text-align:left;font-size:11px">Student's Complete Name</th>
+            <th style="padding:10px 12px;border:1px solid #1F2937;text-align:left;font-size:11px">Date / Details</th>
+            <th style="padding:10px 12px;border:1px solid #1F2937;text-align:center;font-size:11px">Qty</th>
+            <th style="padding:10px 12px;border:1px solid #1F2937;text-align:right;font-size:11px">Unit Price</th>
+            <th style="padding:10px 12px;border:1px solid #1F2937;text-align:right;font-size:11px">Total (USD)</th>
           </tr>
         </thead>
         <tbody>${buildCoachInvoiceRowsMarkup(data)}</tbody>
-        <tfoot>
-          <tr>
-            <td colspan="2" style="padding:12px;border:1px solid #D1D5DB;text-align:right;font-size:13px;font-weight:800">Total</td>
-            <td style="padding:12px;border:1px solid #D1D5DB;text-align:center;font-size:13px;font-weight:800">${esc(formatSessionAmount(data.totalQuantity))}</td>
-            <td style="padding:12px;border:1px solid #D1D5DB;text-align:right;font-size:13px;font-weight:800">${formatUsdMoney(data.unitRate)}</td>
-            <td style="padding:12px;border:1px solid #D1D5DB;text-align:right;font-size:13px;font-weight:800">${formatUsdMoney(data.totalAmount)}</td>
-          </tr>
-        </tfoot>
       </table>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:18px">
+        <div style="display:grid;grid-template-columns:108px 120px;min-width:228px">
+          <div style="border:1px solid #1F2937;border-top:none;padding:8px 10px;text-align:right;font-size:12px;font-weight:800;color:#111827">Total</div>
+          <div style="border:1px solid #1F2937;border-top:none;border-left:none;padding:8px 10px;text-align:right;font-size:12px;font-weight:800;color:#111827">${formatUsdMoney(data.totalAmount)}</div>
+        </div>
+      </div>
       <div>
-        <div style="font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Payment Method</div>
-        <div style="padding:12px 14px;border:1px solid #D1D5DB;border-radius:8px;background:${documentMode ? '#FFFFFF' : '#F9FAFB'};font-size:13px;line-height:1.7;color:var(--gray-700)">
+        <div style="display:inline-block;background:#153A63;color:white;padding:7px 12px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.45px">Payment Method:</div>
+        <div style="border:1px solid #1F2937;border-top:none;padding:12px 14px;font-size:12px;line-height:1.65;color:#111827">
           <div><strong>Payment Method:</strong> ${esc(draft.paymentMethod || '-')}</div>
           <div><strong>Account Holder:</strong> ${esc(draft.accountHolder || '-')}</div>
           <div><strong>Account Number:</strong> ${esc(draft.accountNumber || '-')}</div>
           <div><strong>Account Type:</strong> ${esc(draft.accountType || '-')}</div>
           <div><strong>Routing Number:</strong> ${esc(draft.routingNumber || '-')}</div>
-          <div><strong>Bank Name and Address:</strong><br>${formatInvoiceMultiline(draft.bankNameAddress) || '-'}</div>
+          <div><strong>Bank Name and Address:</strong></div>
+          <div style="margin-top:4px">${formatInvoiceMultiline(draft.bankNameAddress) || '-'}</div>
         </div>
       </div>
     </div>`;
@@ -4063,20 +4378,6 @@ function buildCoachInvoiceMarkup(data, documentMode = false) {
 
 function buildCoachInvoicePreview(data) {
   return buildCoachInvoiceMarkup(data, false);
-}
-
-function buildCoachInvoiceDocumentHtml(data) {
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(data.coach.name)} Invoice ${esc(data.invoiceMonthLabel)}</title><style>
-    :root {
-      --gray-200: #E5E7EB;
-      --gray-500: #6B7280;
-      --gray-700: #374151;
-      --gray-800: #1F2937;
-      --green: #B91C1C;
-    }
-    body { font-family: Calibri, Arial, sans-serif; background:#FFFFFF; color:#111827; margin:24px; }
-    strong { font-weight:700; }
-  </style></head><body>${buildCoachInvoiceMarkup(data, true)}</body></html>`;
 }
 
 function updateCoachInvoicePreview() {
@@ -4096,58 +4397,186 @@ function persistCoachInvoiceDefaults(coach) {
   return draft;
 }
 
+function saveInvoiceExtra() {
+  if (!isAdminUser()) return;
+  const coach = getInvoiceSelectedCoach();
+  if (!coach) {
+    setCoachInvoiceStatus('Select a coach before adding invoice entries.', 'error');
+    return;
+  }
+  const type = (document.getElementById('invoice-extra-type')?.value || 'extra').trim().toLowerCase() === 'bonus' ? 'bonus' : 'extra';
+  const date = document.getElementById('invoice-extra-date')?.value || '';
+  const amount = normalizeCoachWorkAmount(document.getElementById('invoice-extra-amount')?.value || '');
+  const descriptionInput = (document.getElementById('invoice-extra-description')?.value || '').trim();
+  const notes = (document.getElementById('invoice-extra-notes')?.value || '').trim();
+  if (!date) {
+    setCoachInvoiceStatus('Add a date for the invoice entry.', 'error');
+    return;
+  }
+  if (amount <= 0) {
+    setCoachInvoiceStatus('Enter an amount greater than zero for the invoice entry.', 'error');
+    return;
+  }
+  const entry = normalizeCoachInvoiceExtraEntry({
+    id: invoiceExtraEditId || uid(),
+    type,
+    date,
+    description: descriptionInput || (type === 'bonus' ? 'Coach Bonus' : 'Additional Task'),
+    amount,
+    notes
+  });
+  const nextExtras = [
+    ...(coach.invoiceExtras || []).filter(item => item.id !== entry.id),
+    entry
+  ];
+  DB.upsertCoach({ ...coach, invoiceExtras: nextExtras });
+  invoiceExtraEditId = '';
+  setCoachInvoiceStatus(`${entry.type === 'bonus' ? 'Bonus' : 'Invoice entry'} saved for ${coach.name}.`, 'success');
+  renderInvoiceView();
+}
+
+function deleteInvoiceExtra(id) {
+  if (!isAdminUser()) return;
+  const coach = getInvoiceSelectedCoach();
+  if (!coach) return;
+  const entry = (coach.invoiceExtras || []).find(item => item.id === id);
+  if (!entry) return;
+  if (!confirm(`Delete "${entry.description}" from ${coach.name}'s invoice entries?`)) return;
+  DB.upsertCoach({ ...coach, invoiceExtras: (coach.invoiceExtras || []).filter(item => item.id !== id) });
+  if (invoiceExtraEditId === id) invoiceExtraEditId = '';
+  setCoachInvoiceStatus('Invoice entry deleted.', 'success');
+  renderInvoiceView();
+}
+
+function openCoachBonusModal(coachId) {
+  if (!isAdminUser()) return;
+  coachBonusCtxId = coachId;
+  coachBonusEditId = '';
+  renderCoachBonusModal();
+  setCoachBonusStatus('');
+  openModal('modal-coach-bonus');
+}
+
+function resetCoachBonusForm() {
+  coachBonusEditId = '';
+  renderCoachBonusModal();
+  setCoachBonusStatus('');
+}
+
+function editCoachBonus(id) {
+  coachBonusEditId = id || '';
+  renderCoachBonusModal();
+}
+
+function renderCoachBonusModal() {
+  const coach = getCoachRecordById(coachBonusCtxId);
+  const listEl = document.getElementById('coach-bonus-list');
+  const titleEl = document.getElementById('coach-bonus-modal-title');
+  const formTitleEl = document.getElementById('coach-bonus-form-title');
+  if (!listEl || !titleEl || !formTitleEl) return;
+  if (!coach) {
+    listEl.innerHTML = `<div style="padding:14px;border:1px dashed var(--gray-300);border-radius:8px;color:var(--gray-500);font-size:13px">Coach record not found.</div>`;
+    return;
+  }
+  const bonuses = getCoachBonusEntries(coach);
+  const editing = bonuses.find(entry => entry.id === coachBonusEditId) || null;
+  if (coachBonusEditId && !editing) coachBonusEditId = '';
+  const activeEdit = editing || null;
+
+  titleEl.textContent = `${coach.name} Bonuses`;
+  formTitleEl.textContent = activeEdit ? 'Edit Bonus' : 'Add Bonus';
+  listEl.innerHTML = bonuses.length ? bonuses.map(entry => `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px;background:white">
+      <div style="min-width:0;flex:1">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:800;color:var(--gray-800)">${esc(entry.description || 'Coach Bonus')}</span>
+          <span style="padding:2px 8px;border-radius:999px;background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;font-size:11px;font-weight:800">Bonus</span>
+        </div>
+        <div style="font-size:12px;color:var(--gray-500);margin-top:4px">${esc(fmtDate(entry.date))}${entry.notes ? ` - ${esc(entry.notes)}` : ''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="font-size:14px;font-weight:900;color:var(--green)">${formatUsdMoney(entry.amount)}</div>
+        <button class="btn btn-secondary btn-xs" onclick="editCoachBonus('${entry.id}')">Edit</button>
+        <button class="btn btn-secondary btn-xs" style="border-color:#FECACA;color:#B91C1C;background:#FEF2F2" onclick="deleteCoachBonus('${entry.id}')">Delete</button>
+      </div>
+    </div>
+  `).join('') : `<div style="padding:14px;border:1px dashed var(--gray-300);border-radius:8px;color:var(--gray-500);font-size:13px">No bonuses recorded yet for this coach.</div>`;
+
+  document.getElementById('coach-bonus-date').value = activeEdit?.date || getMonthSeedDate(localDateStr(new Date()).slice(0, 7));
+  document.getElementById('coach-bonus-amount').value = activeEdit ? String(activeEdit.amount || '') : '';
+  document.getElementById('coach-bonus-description').value = activeEdit?.description || 'Coach Bonus';
+  document.getElementById('coach-bonus-notes').value = activeEdit?.notes || '';
+  document.getElementById('btn-save-coach-bonus').textContent = activeEdit ? 'Save Changes' : 'Save Bonus';
+}
+
+function saveCoachBonus() {
+  if (!isAdminUser()) return;
+  const coach = getCoachRecordById(coachBonusCtxId);
+  if (!coach) {
+    setCoachBonusStatus('Coach record not found.', 'error');
+    return;
+  }
+  const date = document.getElementById('coach-bonus-date')?.value || '';
+  const amount = normalizeCoachWorkAmount(document.getElementById('coach-bonus-amount')?.value || '');
+  const descriptionInput = (document.getElementById('coach-bonus-description')?.value || '').trim();
+  const notes = (document.getElementById('coach-bonus-notes')?.value || '').trim();
+  if (!date) {
+    setCoachBonusStatus('Add a date for this bonus.', 'error');
+    return;
+  }
+  if (amount <= 0) {
+    setCoachBonusStatus('Enter a bonus amount greater than zero.', 'error');
+    return;
+  }
+  const entry = normalizeCoachInvoiceExtraEntry({
+    id: coachBonusEditId || uid(),
+    type: 'bonus',
+    date,
+    amount,
+    description: descriptionInput || 'Coach Bonus',
+    notes
+  });
+  const nextExtras = [
+    ...(coach.invoiceExtras || []).filter(item => item.id !== entry.id),
+    entry
+  ];
+  DB.upsertCoach({ ...coach, invoiceExtras: nextExtras });
+  coachBonusEditId = '';
+  renderCoachBonusModal();
+  setCoachBonusStatus(`Bonus saved for ${coach.name}.`, 'success');
+}
+
+function deleteCoachBonus(id) {
+  if (!isAdminUser()) return;
+  const coach = getCoachRecordById(coachBonusCtxId);
+  if (!coach) return;
+  const entry = (coach.invoiceExtras || []).find(item => item.id === id && item.type === 'bonus');
+  if (!entry) return;
+  if (!confirm(`Delete the bonus "${entry.description}" for ${coach.name}?`)) return;
+  DB.upsertCoach({ ...coach, invoiceExtras: (coach.invoiceExtras || []).filter(item => item.id !== id) });
+  if (coachBonusEditId === id) coachBonusEditId = '';
+  renderCoachBonusModal();
+  setCoachBonusStatus('Bonus deleted.', 'success');
+}
+
+function toggleCoachSpeakingTestAccess(coachId) {
+  if (!isAdminUser()) return;
+  const coach = getCoachRecordById(coachId);
+  if (!coach) return;
+  DB.upsertCoach({ ...coach, speakingTestEnabled: !coach.speakingTestEnabled });
+}
+
 function drawCoachInvoicePdf(doc, data) {
+  const navy = [21, 58, 99];
+  const ink = [17, 24, 39];
+  const border = [31, 41, 55];
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const marginX = 40;
-  const topY = 44;
+  const marginX = 38;
   const contentWidth = pageWidth - (marginX * 2);
-  const leftWidth = 300;
-  const rightX = marginX + leftWidth + 24;
-  const rightWidth = contentWidth - leftWidth - 24;
-  const safePaymentBank = data.defaults.bankNameAddress || '-';
-  const leftLines = [
-    { text: data.coach.name || 'Coach Name', bold: true, size: 16 },
-    { text: 'Address: ' + (data.defaults.address || '-'), size: 10.5 },
-    { text: 'Contact Number: ' + (data.defaults.contactNumber || '-'), size: 10.5 },
-    { text: 'Email: ' + (data.defaults.email || '-'), size: 10.5 }
-  ];
-
-  let leftY = topY;
-  leftLines.forEach((line, index) => {
-    doc.setFont('helvetica', line.bold ? 'bold' : 'normal');
-    doc.setFontSize(line.size || 11);
-    const lines = doc.splitTextToSize(line.text, leftWidth);
-    doc.text(lines, marginX, leftY);
-    leftY += (lines.length * (line.bold ? 18 : 14)) + (index === 0 ? 4 : 2);
-  });
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.text('Invoice', rightX, topY);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10.5);
-  const invoiceMeta = [
-    ['Date:', data.invoiceDateLabel],
-    ['Invoice #:', data.invoiceNumber],
-    ['Invoice Month:', data.invoiceMonthLabel]
-  ];
-  let rightY = topY + 24;
-  invoiceMeta.forEach(([label, value]) => {
-    doc.setFont('helvetica', 'bold');
-    doc.text(label, rightX, rightY);
-    doc.setFont('helvetica', 'normal');
-    doc.text(String(value || '-'), rightX + 70, rightY);
-    rightY += 15;
-  });
-
-  let y = Math.max(leftY, rightY) + 16;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text('Bill To:', marginX, y);
-  y += 14;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10.5);
+  const leftWidth = contentWidth - 182;
+  const rightWidth = 182;
+  const topY = 42;
   const billToLines = [
     'Lingohabit LLC',
     'Address: 30 N Gould St Ste R, Sheridan, Wyoming, 82801, United States',
@@ -4155,93 +4584,169 @@ function drawCoachInvoicePdf(doc, data) {
     'Email address: frederic@lingohabit.com',
     'Note: The company is located in the USA so no EU VAT'
   ];
-  billToLines.forEach(line => {
-    const wrapped = doc.splitTextToSize(line, contentWidth);
-    doc.text(wrapped, marginX, y);
-    y += wrapped.length * 13;
+  const coachInfoLines = [
+    { text: data.coach.name || 'Coach Name', size: 15, style: 'bold', gap: 6 },
+    { text: data.defaults.address || '-', size: 10.5, style: 'normal', gap: 4 },
+    { text: 'Contact Number: ' + (data.defaults.contactNumber || '-'), size: 10.5, style: 'normal', gap: 2 },
+    { text: 'Email: ' + (data.defaults.email || '-'), size: 10.5, style: 'normal', gap: 0 }
+  ];
+  const invoiceMetaLines = [
+    ['Date:', data.invoiceDateLabel],
+    ['Invoice #:', data.invoiceNumber],
+    ['Invoice Month:', data.invoiceMonthLabel]
+  ];
+
+  function setFont(size, style = 'normal', color = ink) {
+    doc.setFont('helvetica', style);
+    doc.setFontSize(size);
+    doc.setTextColor(color[0], color[1], color[2]);
+  }
+
+  function ensureSpace(currentY, neededHeight) {
+    if (currentY + neededHeight <= pageHeight - 38) return currentY;
+    doc.addPage();
+    return 44;
+  }
+
+  doc.setLineWidth(0.8);
+  doc.setDrawColor(border[0], border[1], border[2]);
+
+  const leftInnerWidth = leftWidth - 24;
+  let leftHeight = 18;
+  coachInfoLines.forEach(line => {
+    setFont(line.size, line.style);
+    const wrapped = doc.splitTextToSize(line.text, leftInnerWidth);
+    leftHeight += wrapped.length * (line.size + 2) + line.gap;
   });
-  y += 10;
+  let rightHeight = 38;
+  invoiceMetaLines.forEach(([label, value]) => {
+    setFont(10.5, 'bold');
+    const labelWidth = doc.getTextWidth(label);
+    setFont(10.5, 'normal');
+    const wrapped = doc.splitTextToSize(String(value || '-'), rightWidth - 26 - labelWidth - 8);
+    rightHeight += Math.max(1, wrapped.length) * 14;
+  });
+  const headerHeight = Math.max(122, leftHeight + 12, rightHeight + 8);
+
+  doc.rect(marginX, topY, leftWidth, headerHeight);
+  doc.rect(marginX + leftWidth, topY, rightWidth, headerHeight);
+
+  let leftY = topY + 18;
+  coachInfoLines.forEach(line => {
+    setFont(line.size, line.style);
+    const wrapped = doc.splitTextToSize(line.text, leftInnerWidth);
+    doc.text(wrapped, marginX + 12, leftY);
+    leftY += wrapped.length * (line.size + 2) + line.gap;
+  });
+
+  setFont(22, 'bold');
+  doc.text('Invoice', marginX + leftWidth + (rightWidth / 2), topY + 24, { align: 'center' });
+  let rightY = topY + 46;
+  invoiceMetaLines.forEach(([label, value]) => {
+    setFont(10.5, 'bold');
+    doc.text(label, marginX + leftWidth + 12, rightY);
+    setFont(10.5, 'normal');
+    const wrapped = doc.splitTextToSize(String(value || '-'), rightWidth - 84);
+    doc.text(wrapped, marginX + leftWidth + 76, rightY);
+    rightY += Math.max(1, wrapped.length) * 14;
+  });
+
+  let y = topY + headerHeight + 18;
+  doc.setFillColor(navy[0], navy[1], navy[2]);
+  doc.rect(marginX, y, 104, 18, 'F');
+  setFont(10, 'bold', [255, 255, 255]);
+  doc.text('Bill To:', marginX + 10, y + 12);
+  y += 18;
+  const billToHeight = 76;
+  doc.rect(marginX, y, contentWidth, billToHeight);
+  setFont(10.2, 'normal');
+  let billY = y + 14;
+  billToLines.forEach(line => {
+    const wrapped = doc.splitTextToSize(line, contentWidth - 20);
+    doc.text(wrapped, marginX + 10, billY);
+    billY += wrapped.length * 12 + 2;
+  });
+  y += billToHeight + 16;
 
   const bodyRows = data.lineItems.length
     ? data.lineItems.map(item => [
-        item.studentName,
-        item.dates.map(date => fmtDate(date)).join('\n'),
-        formatSessionAmount(item.quantity),
-        formatUsdMoney(data.unitRate),
+        item.description,
+        invoiceDetailLinesText(item.detailLines),
+        item.qtyDisplay,
+        item.unitPriceLabel || '-',
         formatUsdMoney(item.total)
       ])
-    : [[`No payable logged sessions found for ${data.invoiceMonthLabel}.`, '', '', '', '']];
+    : [['No billable work found for this month.', '', '', '', formatUsdMoney(0)]];
 
   doc.autoTable({
     startY: y,
-    theme: 'grid',
     margin: { left: marginX, right: marginX },
+    tableWidth: contentWidth,
+    theme: 'grid',
     styles: {
       font: 'helvetica',
-      fontSize: 9.5,
-      cellPadding: 6,
-      lineColor: [209, 213, 219],
+      fontSize: 9.4,
+      textColor: ink,
+      lineColor: border,
       lineWidth: 0.6,
-      textColor: [31, 41, 55],
+      cellPadding: { top: 6, right: 7, bottom: 6, left: 7 },
       valign: 'top'
     },
     headStyles: {
-      fillColor: [243, 244, 246],
-      textColor: [31, 41, 55],
-      fontStyle: 'bold'
-    },
-    footStyles: {
-      fillColor: [249, 250, 251],
-      textColor: [31, 41, 55],
-      fontStyle: 'bold'
+      fillColor: navy,
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      halign: 'left'
     },
     columnStyles: {
-      0: { cellWidth: 170 },
-      1: { cellWidth: 150 },
-      2: { cellWidth: 48, halign: 'center' },
-      3: { cellWidth: 72, halign: 'right' },
-      4: { cellWidth: 80, halign: 'right' }
+      0: { cellWidth: 165 },
+      1: { cellWidth: 162 },
+      2: { cellWidth: 50, halign: 'center' },
+      3: { cellWidth: 74, halign: 'right' },
+      4: { cellWidth: 86, halign: 'right' }
     },
-    head: [[`Student's Complete Name`, 'Session Date', 'Qty', 'Unit Price', 'Total (USD)']],
-    body: bodyRows,
-    foot: [[
-      'Total',
-      '',
-      formatSessionAmount(data.totalQuantity),
-      formatUsdMoney(data.unitRate),
-      formatUsdMoney(data.totalAmount)
-    ]]
+    head: [[`Student's Complete Name`, 'Date / Details', 'Qty', 'Unit Price', 'Total (USD)']],
+    body: bodyRows
   });
 
-  let finalY = (doc.lastAutoTable?.finalY || y) + 16;
+  let finalY = (doc.lastAutoTable?.finalY || y) + 2;
+  const totalLabelWidth = 82;
+  const totalAmountWidth = 98;
+  const totalX = marginX + contentWidth - totalLabelWidth - totalAmountWidth;
+  doc.rect(totalX, finalY, totalLabelWidth, 20);
+  doc.rect(totalX + totalLabelWidth, finalY, totalAmountWidth, 20);
+  setFont(10, 'bold');
+  doc.text('Total', totalX + totalLabelWidth - 8, finalY + 13, { align: 'right' });
+  doc.text(formatUsdMoney(data.totalAmount), totalX + totalLabelWidth + totalAmountWidth - 8, finalY + 13, { align: 'right' });
+  finalY += 34;
+
   const paymentLines = [
     'Payment Method: ' + (data.defaults.paymentMethod || '-'),
     'Account Holder: ' + (data.defaults.accountHolder || '-'),
     'Account Number: ' + (data.defaults.accountNumber || '-'),
     'Account Type: ' + (data.defaults.accountType || '-'),
     'Routing Number: ' + (data.defaults.routingNumber || '-'),
-    'Bank Name and Address: ' + safePaymentBank
+    'Bank Name and Address: ' + (data.defaults.bankNameAddress || '-')
   ];
-
-  const paymentBlockHeight = paymentLines.reduce((sum, line, index) => {
-    const wrapped = doc.splitTextToSize(line, contentWidth);
-    return sum + (index === 0 ? 18 : 0) + wrapped.length * 13 + 2;
-  }, 0);
-  if (finalY + paymentBlockHeight > pageHeight - 40) {
-    doc.addPage();
-    finalY = 50;
-  }
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text('Payment Details', marginX, finalY);
-  finalY += 16;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10.5);
+  let paymentHeight = 16;
+  setFont(10.2, 'normal');
   paymentLines.forEach(line => {
-    const wrapped = doc.splitTextToSize(line, contentWidth);
-    doc.text(wrapped, marginX, finalY);
-    finalY += wrapped.length * 13 + 2;
+    const wrapped = doc.splitTextToSize(line, contentWidth - 20);
+    paymentHeight += wrapped.length * 12 + 3;
+  });
+  finalY = ensureSpace(finalY, paymentHeight + 26);
+  doc.setFillColor(navy[0], navy[1], navy[2]);
+  doc.rect(marginX, finalY, 132, 18, 'F');
+  setFont(10, 'bold', [255, 255, 255]);
+  doc.text('Payment Method:', marginX + 10, finalY + 12);
+  finalY += 18;
+  doc.rect(marginX, finalY, contentWidth, paymentHeight);
+  setFont(10.2, 'normal');
+  let paymentY = finalY + 14;
+  paymentLines.forEach(line => {
+    const wrapped = doc.splitTextToSize(line, contentWidth - 20);
+    doc.text(wrapped, marginX + 10, paymentY);
+    paymentY += wrapped.length * 12 + 3;
   });
 }
 
@@ -4352,19 +4857,23 @@ function renderInvoiceView() {
   const selectedInvoiceCoach = getInvoiceSelectedCoach();
   const invoiceDraftData = selectedInvoiceCoach ? getInvoiceDraftForCoach(selectedInvoiceCoach) : normalizeCoachInvoiceDefaults();
   const invoicePreviewData = selectedInvoiceCoach ? buildCoachInvoiceData(selectedInvoiceCoach, invoiceMonth, invoiceDraftData) : null;
+  const invoiceExtras = selectedInvoiceCoach ? getCoachInvoiceExtras(selectedInvoiceCoach, invoiceMonth) : [];
+  const editingInvoiceExtra = invoiceExtras.find(entry => entry.id === invoiceExtraEditId) || null;
+  if (invoiceExtraEditId && !editingInvoiceExtra) invoiceExtraEditId = '';
+  const activeInvoiceExtra = editingInvoiceExtra || null;
   const invoiceStatusHtml = invoiceStatusMessage
     ? `<div id="coach-invoice-status" style="display:block;font-size:13px;margin-top:12px;color:${invoiceStatusTone === 'error' ? '#B91C1C' : invoiceStatusTone === 'success' ? '#166534' : 'var(--gray-500)'}">${esc(invoiceStatusMessage)}</div>`
     : `<div id="coach-invoice-status" style="display:none;font-size:13px;margin-top:12px"></div>`;
 
   container.innerHTML = `
     <div class="dashboard-header">
-      <div><h1>Invoice Generator</h1><p>Generate monthly coach invoices from logged sessions and saved billing defaults.</p></div>
+      <div><h1>Invoice Generator</h1><p>Generate polished monthly coach invoices from sessions, speaking tests, bonuses, and manual add-ons.</p></div>
     </div>
     <div style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:18px 20px;box-shadow:var(--shadow-sm)">
       <div style="display:flex;align-items:flex-start;gap:14px;justify-content:space-between;flex-wrap:wrap">
         <div>
           <div style="font-size:16px;font-weight:800;color:var(--gray-800)">Coach Invoice Generator</div>
-          <div style="font-size:13px;color:var(--gray-500);margin-top:4px">Use the selected month and that coach’s logged sessions to build a PDF invoice that follows the team template.</div>
+          <div style="font-size:13px;color:var(--gray-500);margin-top:4px">The invoice pulls the selected month’s student sessions, speaking test time, bonuses, and manual invoice entries into one PDF.</div>
         </div>
         ${selectedInvoiceCoach ? `
           <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -4374,7 +4883,7 @@ function renderInvoiceView() {
       </div>
       ${invoiceStatusHtml}
       ${invoiceCoaches.length ? `
-        <div style="display:grid;grid-template-columns:minmax(320px,380px) minmax(0,1fr);gap:18px;align-items:start;margin-top:16px">
+        <div style="display:grid;grid-template-columns:minmax(340px,400px) minmax(0,1fr);gap:18px;align-items:start;margin-top:16px">
           <div style="display:grid;gap:14px">
             <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:14px">
               <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -4408,7 +4917,7 @@ function renderInvoiceView() {
                   </div>
                 </div>
                 <div class="ff">
-                  <label>Rate per Session (USD) *</label>
+                  <label>Rate per 60 minutes / session (USD) *</label>
                   <input type="number" min="0" step="0.01" value="${esc(invoiceDraftData.rate || '')}" oninput="setInvoiceDraftField('rate',this.value)">
                 </div>
                 <div class="ff">
@@ -4441,6 +4950,67 @@ function renderInvoiceView() {
                 </div>
               </div>
             </div>
+            <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:14px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+                <div>
+                  <div style="font-size:14px;font-weight:800;color:var(--gray-800)">Manual Invoice Entries</div>
+                  <div style="font-size:13px;color:var(--gray-500);margin-top:4px">Add fixed bonuses or extra tasks for ${esc(invoiceMonth ? monthLabel(invoiceMonth) : 'this month')}.</div>
+                </div>
+                ${invoiceExtras.length ? `<div style="font-size:12px;font-weight:700;color:var(--gray-500)">${invoiceExtras.length} item${invoiceExtras.length !== 1 ? 's' : ''}</div>` : ''}
+              </div>
+              <div style="display:grid;gap:10px;margin-bottom:14px">
+                ${invoiceExtras.length ? invoiceExtras.map(entry => `
+                  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px;background:white">
+                    <div style="min-width:0;flex:1">
+                      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <span style="font-size:13px;font-weight:800;color:var(--gray-800)">${esc(entry.description)}</span>
+                        <span style="padding:2px 8px;border-radius:999px;background:${entry.type === 'bonus' ? '#FEF3C7' : '#EFF6FF'};color:${entry.type === 'bonus' ? '#92400E' : '#1D4ED8'};border:1px solid ${entry.type === 'bonus' ? '#F59E0B' : '#BFDBFE'};font-size:11px;font-weight:800">${entry.type === 'bonus' ? 'Bonus' : 'Additional Task'}</span>
+                      </div>
+                      <div style="font-size:12px;color:var(--gray-500);margin-top:4px">${esc(fmtDate(entry.date))}${entry.notes ? ` - ${esc(entry.notes)}` : ''}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                      <div style="font-size:14px;font-weight:900;color:var(--green)">${formatUsdMoney(entry.amount)}</div>
+                      <button class="btn btn-secondary btn-xs" onclick="setInvoiceExtraEdit('${entry.id}')">Edit</button>
+                      <button class="btn btn-secondary btn-xs" style="border-color:#FECACA;color:#B91C1C;background:#FEF2F2" onclick="deleteInvoiceExtra('${entry.id}')">Delete</button>
+                    </div>
+                  </div>
+                `).join('') : `<div style="padding:14px;border:1px dashed var(--gray-300);border-radius:8px;color:var(--gray-500);font-size:13px;background:white">No manual invoice entries for this month yet.</div>`}
+              </div>
+              <div style="border:1px solid var(--gray-200);border-radius:8px;padding:14px;background:white">
+                <div style="font-size:13px;font-weight:800;color:var(--gray-800);margin-bottom:12px">${activeInvoiceExtra ? 'Edit Invoice Entry' : 'Add Invoice Entry'}</div>
+                <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                  <div class="ff">
+                    <label>Type *</label>
+                    <select id="invoice-extra-type">
+                      <option value="extra" ${!activeInvoiceExtra || activeInvoiceExtra.type !== 'bonus' ? 'selected' : ''}>Additional Task</option>
+                      <option value="bonus" ${activeInvoiceExtra?.type === 'bonus' ? 'selected' : ''}>Bonus</option>
+                    </select>
+                  </div>
+                  <div class="ff">
+                    <label>Date *</label>
+                    <input type="date" id="invoice-extra-date" value="${esc(activeInvoiceExtra?.date || getMonthSeedDate(invoiceMonth))}">
+                  </div>
+                </div>
+                <div class="form-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 140px;gap:12px;margin-top:12px">
+                  <div class="ff">
+                    <label>Description *</label>
+                    <input type="text" id="invoice-extra-description" value="${esc(activeInvoiceExtra?.description || '')}" placeholder="e.g. Mock interview prep, curriculum bonus">
+                  </div>
+                  <div class="ff">
+                    <label>Amount (USD) *</label>
+                    <input type="number" id="invoice-extra-amount" min="0" step="0.01" value="${esc(activeInvoiceExtra ? String(activeInvoiceExtra.amount || '') : '')}" placeholder="0.00">
+                  </div>
+                </div>
+                <div class="ff" style="margin-top:12px">
+                  <label>Notes</label>
+                  <textarea id="invoice-extra-notes" rows="3" placeholder="Optional notes for this invoice entry">${esc(activeInvoiceExtra?.notes || '')}</textarea>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+                  <button class="btn btn-secondary" onclick="resetInvoiceExtraForm()">Clear</button>
+                  <button class="btn btn-primary" onclick="saveInvoiceExtra()">${activeInvoiceExtra ? 'Save Changes' : 'Add Entry'}</button>
+                </div>
+              </div>
+            </div>
           </div>
           <div id="coach-invoice-preview">${buildCoachInvoicePreview(invoicePreviewData)}</div>
         </div>` : `
@@ -4452,15 +5022,191 @@ function renderInvoiceView() {
   setCoachInvoiceStatus(invoiceStatusMessage, invoiceStatusTone);
 }
 
+function saveSpeakingTestEntry() {
+  const coach = getSpeakingTestSelectedCoach();
+  if (!coach) {
+    setSpeakingTestStatus('Select a coach before saving speaking test work.', 'error');
+    return;
+  }
+  const date = document.getElementById('speaking-test-date')?.value || '';
+  const label = (document.getElementById('speaking-test-label')?.value || '').trim();
+  const minutes = parseImportedInteger(document.getElementById('speaking-test-minutes')?.value || '');
+  const notes = (document.getElementById('speaking-test-notes')?.value || '').trim();
+  if (!date) {
+    setSpeakingTestStatus('Add the task date first.', 'error');
+    return;
+  }
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    setSpeakingTestStatus('Enter the total minutes spent for this task.', 'error');
+    return;
+  }
+  const entry = normalizeCoachSpeakingTestEntry({
+    id: speakingTestEditId || uid(),
+    date,
+    label,
+    minutes,
+    notes
+  });
+  const nextEntries = [
+    ...(coach.speakingTests || []).filter(item => item.id !== entry.id),
+    entry
+  ];
+  DB.upsertCoach({ ...coach, speakingTests: nextEntries });
+  speakingTestEditId = '';
+  setSpeakingTestStatus(`Speaking test work saved for ${coach.name}.`, 'success');
+  renderSpeakingTestsView();
+}
+
+function deleteSpeakingTestEntry(id) {
+  const coach = getSpeakingTestSelectedCoach();
+  if (!coach) return;
+  const entry = (coach.speakingTests || []).find(item => item.id === id);
+  if (!entry) return;
+  if (!confirm(`Delete this speaking test task from ${fmtDate(entry.date)}?`)) return;
+  DB.upsertCoach({ ...coach, speakingTests: (coach.speakingTests || []).filter(item => item.id !== id) });
+  if (speakingTestEditId === id) speakingTestEditId = '';
+  setSpeakingTestStatus('Speaking test entry deleted.', 'success');
+  renderSpeakingTestsView();
+}
+
+function renderSpeakingTestsView() {
+  const container = document.getElementById('speaking-tests-container');
+  if (!container) return;
+  if (isCoachUser() && !canCurrentUserAccessSpeakingTests()) {
+    container.innerHTML = `
+      <div class="dashboard-header">
+        <div><h1>Speaking Tests</h1><p>This section is only enabled for selected coaches.</p></div>
+      </div>
+      <div style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:22px;box-shadow:var(--shadow-sm)">
+        <div style="padding:14px;border:1px dashed var(--gray-300);border-radius:8px;color:var(--gray-500);font-size:13px">Ask an admin to enable speaking test access on your coach profile if you need to track this work.</div>
+      </div>`;
+    return;
+  }
+
+  const coachOptions = getSpeakingTestCoachProfiles();
+  const selectedCoach = getSpeakingTestSelectedCoach();
+  const monthEntries = selectedCoach ? getCoachSpeakingTestEntries(selectedCoach, speakingTestMonth) : [];
+  const editingEntry = monthEntries.find(entry => entry.id === speakingTestEditId) || null;
+  if (speakingTestEditId && !editingEntry) speakingTestEditId = '';
+  const activeEdit = editingEntry || null;
+  const totalMinutes = monthEntries.reduce((sum, entry) => sum + (entry.minutes || 0), 0);
+  const totalTasks = monthEntries.length;
+  const avgMinutes = totalTasks ? Math.round(totalMinutes / totalTasks) : 0;
+  const statusHtml = speakingTestStatusMessage
+    ? `<div id="speaking-test-status" style="display:block;font-size:13px;margin-top:12px;color:${speakingTestStatusTone === 'error' ? '#B91C1C' : speakingTestStatusTone === 'success' ? '#166534' : 'var(--gray-500)'}">${esc(speakingTestStatusMessage)}</div>`
+    : `<div id="speaking-test-status" style="display:none;font-size:13px;margin-top:12px"></div>`;
+  const accessChip = selectedCoach?.speakingTestEnabled
+    ? `<span style="padding:3px 8px;border-radius:999px;background:#ECFDF5;border:1px solid #A7F3D0;color:#166534;font-size:11px;font-weight:800">Coach Access Enabled</span>`
+    : `<span style="padding:3px 8px;border-radius:999px;background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;font-size:11px;font-weight:800">Coach Access Disabled</span>`;
+
+  container.innerHTML = `
+    <div class="dashboard-header">
+      <div><h1>Speaking Tests</h1><p>Track speaking test work separately so it can flow into coach invoices without affecting student calendars or attendance.</p></div>
+    </div>
+    <div style="background:white;border:1px solid var(--gray-200);border-radius:8px;padding:18px 20px;box-shadow:var(--shadow-sm)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:16px;font-weight:800;color:var(--gray-800)">Speaking Test Task Log</div>
+          <div style="font-size:13px;color:var(--gray-500);margin-top:4px">Use the same basic structure as the workbook: date, task or student label, minutes, and notes.</div>
+        </div>
+        ${selectedCoach ? accessChip : ''}
+      </div>
+      ${statusHtml}
+      ${selectedCoach ? `
+        <div style="display:grid;grid-template-columns:minmax(320px,380px) minmax(0,1fr);gap:18px;align-items:start;margin-top:16px">
+          <div style="display:grid;gap:14px">
+            <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:14px">
+              <div class="form-grid" style="display:grid;grid-template-columns:${isAdminUser() ? '1fr 1fr' : '1fr'};gap:12px">
+                ${isAdminUser() ? `
+                  <div class="ff">
+                    <label>Coach *</label>
+                    <select onchange="setSpeakingTestCoach(this.value)">
+                      ${coachOptions.map(coach => `<option value="${esc(coach.id)}" ${selectedCoach?.id === coach.id ? 'selected' : ''}>${esc(coach.name)}</option>`).join('')}
+                    </select>
+                  </div>` : ''}
+                <div class="ff">
+                  <label>Month *</label>
+                  <input type="month" value="${esc(speakingTestMonth)}" onchange="setSpeakingTestMonth(this.value)">
+                </div>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+              <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px">
+                <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">Total Minutes</div>
+                <div style="font-size:18px;font-weight:900;color:var(--gray-800);margin-top:4px">${esc(formatMinutesLabel(totalMinutes))}</div>
+              </div>
+              <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px">
+                <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">Tasks Logged</div>
+                <div style="font-size:18px;font-weight:900;color:var(--gray-800);margin-top:4px">${totalTasks}</div>
+              </div>
+              <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px">
+                <div style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px">Average Minutes</div>
+                <div style="font-size:18px;font-weight:900;color:var(--gray-800);margin-top:4px">${avgMinutes ? `${avgMinutes} min` : '-'}</div>
+              </div>
+            </div>
+            <div style="background:#F9FAFB;border:1px solid var(--gray-200);border-radius:8px;padding:14px">
+              <div style="font-size:14px;font-weight:800;color:var(--gray-800);margin-bottom:12px">${activeEdit ? 'Edit Speaking Test Task' : 'Log Speaking Test Task'}</div>
+              <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div class="ff">
+                  <label>Date *</label>
+                  <input type="date" id="speaking-test-date" value="${esc(activeEdit?.date || getMonthSeedDate(speakingTestMonth))}">
+                </div>
+                <div class="ff">
+                  <label>Minutes *</label>
+                  <input type="number" id="speaking-test-minutes" min="1" step="1" value="${esc(activeEdit ? String(activeEdit.minutes || '') : '')}" placeholder="e.g. 30">
+                </div>
+              </div>
+              <div class="ff" style="margin-top:12px">
+                <label>Task / Student Label</label>
+                <input type="text" id="speaking-test-label" value="${esc(activeEdit?.label || '')}" placeholder="e.g. Mock Video, Casey, placement review">
+              </div>
+              <div class="ff" style="margin-top:12px">
+                <label>Notes</label>
+                <textarea id="speaking-test-notes" rows="4" placeholder="Optional notes about the speaking test work">${esc(activeEdit?.notes || '')}</textarea>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+                <button class="btn btn-secondary" onclick="setSpeakingTestEdit('')">Clear</button>
+                <button class="btn btn-primary" onclick="saveSpeakingTestEntry()">${activeEdit ? 'Save Changes' : 'Save Task'}</button>
+              </div>
+            </div>
+          </div>
+          <div style="display:grid;gap:10px">
+            ${monthEntries.length ? monthEntries.map(entry => `
+              <div style="border:1px solid var(--gray-200);border-radius:8px;padding:14px;background:white;box-shadow:var(--shadow-sm)">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                  <div style="min-width:0;flex:1">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                      <span style="font-size:13px;font-weight:800;color:var(--gray-800)">${esc(entry.label || 'Speaking Test Task')}</span>
+                      <span style="padding:2px 8px;border-radius:999px;background:#EFF6FF;border:1px solid #BFDBFE;color:#1D4ED8;font-size:11px;font-weight:800">${esc(formatMinutesLabel(entry.minutes))}</span>
+                    </div>
+                    <div style="font-size:12px;color:var(--gray-500);margin-top:4px">${esc(fmtDate(entry.date))}${entry.notes ? ` - ${esc(entry.notes)}` : ''}</div>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="btn btn-secondary btn-xs" onclick="setSpeakingTestEdit('${entry.id}')">Edit</button>
+                    <button class="btn btn-secondary btn-xs" style="border-color:#FECACA;color:#B91C1C;background:#FEF2F2" onclick="deleteSpeakingTestEntry('${entry.id}')">Delete</button>
+                  </div>
+                </div>
+              </div>
+            `).join('') : `<div style="padding:16px;border:1px dashed var(--gray-300);border-radius:8px;color:var(--gray-500);font-size:13px;background:white">No speaking test tasks logged for ${esc(monthLabel(speakingTestMonth))} yet.</div>`}
+          </div>
+        </div>` : `
+        <div style="margin-top:16px;padding:18px;border:1px dashed var(--gray-300);border-radius:8px;color:var(--gray-500);font-size:13px">
+          Add at least one coach profile before tracking speaking tests.
+        </div>`}
+    </div>`;
+
+  setSpeakingTestStatus(speakingTestStatusMessage, speakingTestStatusTone);
+}
+
 const GUIDE_CONTENT = {
   admin: {
     title: 'Admin User Guide',
-    subtitle: 'Use this guide to manage students, coaches, attendance, imports, backups, and invoices.',
+    subtitle: 'Use this guide to manage students, coaches, speaking tests, imports, backups, and invoices.',
     highlights: [
       { label: 'Students', value: 'Create, edit, renew, pause, withdraw, and delete profile sheets.' },
-      { label: 'Coaches', value: 'Add coach profiles and keep assignments accurate.' },
+      { label: 'Coaches', value: 'Add coach profiles, manage bonuses, and control speaking test access.' },
       { label: 'Downloads', value: 'Export backups and import older student Excel files.' },
-      { label: 'Invoices', value: 'Generate coach payment invoices from logged sessions and saved billing defaults.' }
+      { label: 'Invoices', value: 'Generate coach payment invoices from logged sessions, speaking tests, and saved billing defaults.' }
     ],
     sections: [
       {
@@ -4499,6 +5245,7 @@ const GUIDE_CONTENT = {
         title: '5. Coaches and Attendance',
         items: [
           { title: 'Coach profiles', body: 'Use the Coaches tab to add, rename, or remove coach profiles. Student assignments should point to an existing coach profile.' },
+          { title: 'Coach bonuses and speaking test access', body: 'From the Coaches tab, admins can record coach bonuses with date and amount, and can turn speaking test access on or off for selected coaches.' },
           { title: 'Coach visibility', body: 'Coaches only see the students assigned to them, plus their own attendance totals and accessible profile actions.' },
           { title: 'Attendance tab', body: 'Use the Attendance tab to review Attended, Reschedule, and Missed counts with search and date filters.' }
         ]
@@ -4516,11 +5263,20 @@ const GUIDE_CONTENT = {
         items: [
           { title: 'Select coach and month', body: 'Open the Invoice Generator tab, choose the coach, then select the billing month you want to invoice.' },
           { title: 'Save billing defaults', body: 'Enter or update the coach address, contact details, rate, and payment information. Save those details so future invoices auto-fill from the latest version.' },
-          { title: 'Generate PDF invoice', body: 'The invoice is calculated dynamically from that coach’s logged sessions for the selected month and downloads as a PDF using the standard invoice layout.' }
+          { title: 'Manual additions', body: 'Use the manual invoice entries panel to add fixed bonuses or extra tasks for the selected month. Coach bonuses saved in the Coaches tab also flow into invoices automatically.' },
+          { title: 'Generate PDF invoice', body: 'The invoice is calculated dynamically from that coach’s logged sessions, speaking test work, and saved extras for the selected month, then downloads as a PDF using the standard invoice layout.' }
         ]
       },
       {
-        title: '8. Admin Permissions',
+        title: '8. Speaking Tests',
+        items: [
+          { title: 'Separate workflow', body: 'Use the Speaking Tests tab to log speaking test work separately from student profile sheets, attendance, and general coach session totals.' },
+          { title: 'Monthly totals', body: 'Filter by month to review the coach’s total minutes, task count, and average minutes for speaking test work.' },
+          { title: 'Invoice link', body: 'Speaking test entries for the selected invoice month are combined into one invoice line item so the month’s total time is easy to review and bill.' }
+        ]
+      },
+      {
+        title: '9. Admin Permissions',
         items: [
           { title: 'Delete access', body: 'Only admins can delete student profile sheets and coach profiles.' },
           { title: 'Sensitive changes', body: 'Use extra care when changing start dates, importing history, or deleting records because those actions affect reporting and carry-over counts.' },
@@ -4535,7 +5291,8 @@ const GUIDE_CONTENT = {
     highlights: [
       { label: 'My Students', value: 'Coaches only see students assigned to their own coach profile.' },
       { label: 'Session Logging', value: 'Log, edit, and review sessions directly from each student calendar.' },
-      { label: 'Attendance', value: 'Use filters to review attended, rescheduled, and missed sessions.' }
+      { label: 'Attendance', value: 'Use filters to review attended, rescheduled, and missed sessions.' },
+      { label: 'Speaking Tests', value: 'Selected coaches can log speaking test work in its own monthly section.' }
     ],
     sections: [
       {
@@ -4579,7 +5336,15 @@ const GUIDE_CONTENT = {
         ]
       },
       {
-        title: '6. When You Need Admin Help',
+        title: '6. Speaking Tests',
+        items: [
+          { title: 'Access by admin', body: 'If your coach profile has speaking test access enabled, you will see a separate Speaking Tests tab in the menu.' },
+          { title: 'Separate from student sessions', body: 'Speaking test entries are logged in their own section and do not change student profile calendars or attendance totals.' },
+          { title: 'Monthly tracking', body: 'Use the month filter to review your logged tasks and total minutes for that month.' }
+        ]
+      },
+      {
+        title: '7. When You Need Admin Help',
         items: [
           { title: 'Profile details', body: 'Ask an admin to update missing coach assignments, student profile fields, renewals, pauses, withdrawals, or imports.' },
           { title: 'Coach assignment problems', body: 'If you cannot see a student you should be coaching, ask an admin to confirm the student is assigned to your coach profile.' },
@@ -5188,6 +5953,8 @@ function renderCoachView() {
     const coachLoginInfo = _coachLogins[name] || null;
     const actionBtns = rc
       ? `<button class="btn btn-xs" style="background:#F3F4F6;color:#374151;border:1px solid #D1D5DB;padding:3px 10px;font-size:12px;border-radius:6px;cursor:pointer" onclick="renameCoach('${rc.id}')">Rename</button>
+         ${isAdminUser() ? `<button class="btn btn-xs" style="background:${rc.speakingTestEnabled ? '#ECFDF5' : '#EFF6FF'};color:${rc.speakingTestEnabled ? '#166534' : '#1D4ED8'};border:1px solid ${rc.speakingTestEnabled ? '#A7F3D0' : '#BFDBFE'};padding:3px 10px;font-size:12px;border-radius:6px;cursor:pointer" onclick="toggleCoachSpeakingTestAccess('${rc.id}')">${rc.speakingTestEnabled ? 'Speaking Tests On' : 'Speaking Tests Off'}</button>` : ''}
+         ${isAdminUser() ? `<button class="btn btn-xs" style="background:#FFFBEB;color:#92400E;border:1px solid #FCD34D;padding:3px 10px;font-size:12px;border-radius:6px;cursor:pointer" onclick="openCoachBonusModal('${rc.id}')">Bonuses</button>` : ''}
          ${isAdminUser() ? `<button class="btn btn-xs" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;padding:3px 10px;font-size:12px;border-radius:6px;cursor:pointer" onclick="deleteCoach('${rc.id}')">Remove</button>` : ''}`
       : '';
     const loginSection = `
@@ -5291,6 +6058,7 @@ function goDashboard() {
   document.getElementById('view-attendance').classList.remove('active');
   document.getElementById('view-download').classList.remove('active');
   document.getElementById('view-invoice').classList.remove('active');
+  document.getElementById('view-speaking-tests').classList.remove('active');
   document.getElementById('view-guide').classList.remove('active');
   renderDashboard();
 }
@@ -5355,6 +6123,7 @@ function goStudent(id) {
   document.getElementById('view-attendance').classList.remove('active');
   document.getElementById('view-download').classList.remove('active');
   document.getElementById('view-invoice').classList.remove('active');
+  document.getElementById('view-speaking-tests').classList.remove('active');
   document.getElementById('view-guide').classList.remove('active');
   try {
     renderStudent(id);
@@ -7463,6 +8232,12 @@ function closeModal(id) {
   }
   if (id === 'modal-prog-start-date') progStartDateCtx = null;
   if (id === 'modal-change-type') changeProgramTypeCtx = null;
+  if (id === 'modal-coach-bonus') {
+    coachBonusCtxId = '';
+    coachBonusEditId = '';
+    const statusEl = document.getElementById('coach-bonus-status');
+    if (statusEl) statusEl.style.display = 'none';
+  }
 }
 
 document.querySelectorAll('.modal-overlay').forEach(o => {
