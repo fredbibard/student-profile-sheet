@@ -1119,6 +1119,8 @@ function defaultCoachInvoiceDefaults() {
     accountNumber: '',
     accountType: '',
     routingNumber: '',
+    iban: '',
+    swiftCode: '',
     bankNameAddress: ''
   };
 }
@@ -1181,6 +1183,8 @@ function normalizeCoachInvoiceDefaults(raw = {}) {
     accountNumber: String(source.accountNumber || '').trim(),
     accountType: String(source.accountType || '').trim(),
     routingNumber: String(source.routingNumber || '').trim(),
+    iban: String(source.iban || '').trim(),
+    swiftCode: String(source.swiftCode || source.swift || '').trim(),
     bankNameAddress: String(source.bankNameAddress || '').trim()
   };
 }
@@ -4098,6 +4102,20 @@ function invoiceDetailLinesText(lines = []) {
   return safeLines.length ? safeLines.join('\n') : '-';
 }
 
+function getInvoicePaymentEntries(defaults = {}) {
+  const draft = normalizeCoachInvoiceDefaults(defaults || {});
+  return [
+    { label: 'Payment Method', value: draft.paymentMethod || '-', multiline: false },
+    draft.accountHolder ? { label: 'Account Holder', value: draft.accountHolder, multiline: false } : null,
+    draft.accountNumber ? { label: 'Account Number', value: draft.accountNumber, multiline: false } : null,
+    draft.accountType ? { label: 'Account Type', value: draft.accountType, multiline: false } : null,
+    draft.routingNumber ? { label: 'Routing Number', value: draft.routingNumber, multiline: false } : null,
+    draft.iban ? { label: 'IBAN', value: draft.iban, multiline: false } : null,
+    draft.swiftCode ? { label: 'SWIFT Code', value: draft.swiftCode, multiline: false } : null,
+    draft.bankNameAddress ? { label: 'Bank Name and Address', value: draft.bankNameAddress, multiline: true } : null
+  ].filter(Boolean);
+}
+
 function setInvoiceCoach(id) {
   invoiceCoachId = id || '';
   invoiceDraft = null;
@@ -4290,6 +4308,7 @@ function buildCoachInvoiceMarkup(data, documentMode = false) {
   }
 
   const draft = data.defaults || normalizeCoachInvoiceDefaults();
+  const paymentEntries = getInvoicePaymentEntries(draft);
   const warningBlocks = [];
   const shellStyle = documentMode
     ? 'max-width:920px;margin:0 auto;color:#111827;font-family:Calibri,Arial,sans-serif'
@@ -4370,13 +4389,10 @@ function buildCoachInvoiceMarkup(data, documentMode = false) {
       <div>
         <div style="display:inline-block;background:#153A63;color:white;padding:7px 12px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.45px">Payment Method:</div>
         <div style="border:1px solid #1F2937;border-top:none;padding:12px 14px;font-size:12px;line-height:1.65;color:#111827">
-          <div><strong>Payment Method:</strong> ${esc(draft.paymentMethod || '-')}</div>
-          <div><strong>Account Holder:</strong> ${esc(draft.accountHolder || '-')}</div>
-          <div><strong>Account Number:</strong> ${esc(draft.accountNumber || '-')}</div>
-          <div><strong>Account Type:</strong> ${esc(draft.accountType || '-')}</div>
-          <div><strong>Routing Number:</strong> ${esc(draft.routingNumber || '-')}</div>
-          <div><strong>Bank Name and Address:</strong></div>
-          <div style="margin-top:4px">${formatInvoiceMultiline(draft.bankNameAddress) || '-'}</div>
+          ${paymentEntries.map(entry => entry.multiline
+            ? `<div><strong>${esc(entry.label)}:</strong></div><div style="margin-top:4px">${formatInvoiceMultiline(entry.value)}</div>`
+            : `<div><strong>${esc(entry.label)}:</strong> ${esc(entry.value)}</div>`
+          ).join('')}
         </div>
       </div>
     </div>`;
@@ -4751,14 +4767,10 @@ function drawCoachInvoicePdf(doc, data) {
 
   let finalY = (doc.lastAutoTable?.finalY || y) + 24;
 
-  const paymentLines = [
-    'Payment Method: ' + (data.defaults.paymentMethod || '-'),
-    'Account Holder: ' + (data.defaults.accountHolder || '-'),
-    'Account Number: ' + (data.defaults.accountNumber || '-'),
-    'Account Type: ' + (data.defaults.accountType || '-'),
-    'Routing Number: ' + (data.defaults.routingNumber || '-'),
-    'Bank Name and Address: ' + (data.defaults.bankNameAddress || '-')
-  ];
+  const paymentLines = getInvoicePaymentEntries(data.defaults).flatMap(entry => entry.multiline
+    ? [`${entry.label}:`, entry.value]
+    : [`${entry.label}: ${entry.value}`]
+  );
   let paymentHeight = 18;
   setFont(10.2, 'normal');
   paymentLines.forEach(line => {
@@ -4973,6 +4985,16 @@ function renderInvoiceView() {
                   <div class="ff">
                     <label>Routing Number</label>
                     <input type="text" value="${esc(invoiceDraftData.routingNumber || '')}" oninput="setInvoiceDraftField('routingNumber',this.value)">
+                  </div>
+                </div>
+                <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                  <div class="ff">
+                    <label>IBAN</label>
+                    <input type="text" value="${esc(invoiceDraftData.iban || '')}" oninput="setInvoiceDraftField('iban',this.value)">
+                  </div>
+                  <div class="ff">
+                    <label>SWIFT Code</label>
+                    <input type="text" value="${esc(invoiceDraftData.swiftCode || '')}" oninput="setInvoiceDraftField('swiftCode',this.value)">
                   </div>
                 </div>
                 <div class="ff">
@@ -6993,7 +7015,7 @@ function buildAllProgramsLog(s, options = {}) {
       const editTypeBtn = canManageStudent && prog.programIdx > 0
         ? `<button onclick="openChangeProgramType('${s.id}',${prog.programIdx})" title="Edit program type" style="background:none;border:1px solid #4B5563;color:#9CA3AF;font-size:11px;padding:2px 8px;border-radius:6px;cursor:pointer;margin-left:4px">Edit Type</button>`
         : '';
-      const deleteProgramBtn = canManageStudent && prog.programIdx > 0
+      const deleteProgramBtn = isAdminUser() && prog.programIdx > 0
         ? `<button onclick="askDeleteProgram('${s.id}',${prog.programIdx})" title="Delete this program" style="background:none;border:1px solid #FCA5A5;color:#FCA5A5;font-size:11px;padding:2px 8px;border-radius:6px;cursor:pointer;margin-left:4px">Delete Program</button>`
         : '';
       const collapseBtn = isCompleted
@@ -8196,7 +8218,7 @@ function askDeleteSession(studentId, sessionId, programIdx = null) {
 }
 
 function askDeleteProgram(studentId, programIdx) {
-  if (!isAdminUser()) { alert('Only team users can delete later programs.'); return; }
+  if (!isAdminUser()) { alert('Only admins can delete later programs.'); return; }
   if (!programIdx || programIdx <= 0) return;
   const s = DB.get(studentId);
   if (!s || !Array.isArray(s.renewals) || !s.renewals[programIdx - 1]) return;
