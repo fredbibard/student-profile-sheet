@@ -4618,8 +4618,13 @@ function drawCoachInvoicePdf(doc, data) {
   const rightPadding = 12;
   const leftInnerWidth = leftWidth - (leftPadding * 2);
   const rightLabelX = marginX + leftWidth + rightPadding;
-  const rightValueX = rightLabelX + 58;
-  const rightValueWidth = rightWidth - (rightPadding * 2) - 58;
+  setFont(10.5, 'bold');
+  const rightLabelWidth = Math.max(
+    66,
+    ...invoiceMetaLines.map(([label]) => doc.getTextWidth(String(label || '')) + 12)
+  );
+  const rightValueX = rightLabelX + rightLabelWidth;
+  const rightValueWidth = rightWidth - (rightPadding * 2) - rightLabelWidth;
   let leftHeight = 22;
   coachInfoLines.forEach(line => {
     setFont(line.size, line.style);
