@@ -127,6 +127,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
 .badge-done { background: #D1FAE5; color: #065F46; }
 .badge-spanish { background: #c60b1e; color: #ffc400; border: 1px solid #a00917; }
 .badge-withdrawn { background: #F3F4F6; color: #374151; border: 1px solid #D1D5DB; }
+.badge-churn { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
 .pending-start-badge {
   display: inline-flex; align-items: center;
   padding: 2px 8px; border-radius: 6px;
@@ -911,19 +912,19 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-10
       <button class="modal-close" onclick="closeModal('modal-withdraw')">&times;</button>
     </div>
     <div class="modal-body">
-      <p style="font-size:13px;color:var(--gray-600);margin-bottom:16px">Mark this student as withdrawn from the program. Their session history will be preserved.</p>
+      <p id="status-action-message" style="font-size:13px;color:var(--gray-600);margin-bottom:16px">Mark this student as withdrawn from the program. Their session history will be preserved.</p>
       <div class="ff" style="margin-bottom:14px">
-        <label>Withdrawal Date *</label>
+        <label id="status-action-date-label">Withdrawal Date *</label>
         <input type="date" id="withdraw-date">
       </div>
       <div class="ff">
-        <label>Reason <span style="font-weight:400;color:var(--gray-400)">(optional)</span></label>
+        <label><span id="status-action-reason-label">Reason</span> <span style="font-weight:400;color:var(--gray-400)">(optional)</span></label>
         <textarea id="withdraw-reason" rows="3" placeholder="e.g. Personal reasons, schedule conflict..." style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;outline:none" onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='var(--gray-300)'"></textarea>
       </div>
     </div>
     <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:16px 20px;border-top:1px solid var(--gray-200)">
       <button class="btn btn-secondary" onclick="closeModal('modal-withdraw')">Cancel</button>
-      <button class="btn btn-danger" onclick="saveWithdrawal()">Confirm Withdrawal</button>
+      <button class="btn btn-danger" id="btn-confirm-status-action" onclick="saveStudentStatusAction()">Confirm Withdrawal</button>
     </div>
   </div>
 </div>
@@ -1869,12 +1870,67 @@ function normalizeStudentRecord(student = {}) {
           startDate: entry?.startDate || ''
         }))
       : [],
+    churned: student.churned === true,
+    churnDate: student.churnDate || '',
+    churnReason: student.churnReason || '',
+    withdrawn: student.withdrawn === true,
+    withdrawalDate: student.withdrawalDate || '',
+    withdrawalReason: student.withdrawalReason || '',
     eop: {
       strengths: '',
       focusAreas: '',
       ...((student.eop && typeof student.eop === 'object') ? student.eop : {})
     }
   };
+}
+
+function isStudentWithdrawn(student) {
+  return student?.withdrawn === true;
+}
+
+function isStudentChurned(student) {
+  return student?.churned === true;
+}
+
+function isStudentInactive(student) {
+  return isStudentWithdrawn(student) || isStudentChurned(student);
+}
+
+function getStudentStatusLabel(student) {
+  if (isStudentChurned(student)) return 'Churn';
+  if (isStudentWithdrawn(student)) return 'Withdrawn';
+  return 'Active';
+}
+
+function getStudentExitType(student) {
+  if (isStudentChurned(student)) return 'churn';
+  if (isStudentWithdrawn(student)) return 'withdrawal';
+  return '';
+}
+
+function getStudentExitDate(student) {
+  return isStudentChurned(student) ? (student?.churnDate || '') : (student?.withdrawalDate || '');
+}
+
+function getStudentExitReason(student) {
+  return isStudentChurned(student) ? (student?.churnReason || '') : (student?.withdrawalReason || '');
+}
+
+function clearStudentExitStatus(student) {
+  if (!student) return;
+  student.withdrawn = false;
+  student.withdrawalDate = '';
+  student.withdrawalReason = '';
+  student.churned = false;
+  student.churnDate = '';
+  student.churnReason = '';
+}
+
+function getStudentNameKeys(student) {
+  return [...new Set([
+    accessKey(student?.fullName || ''),
+    accessKey(student?.name || '')
+  ].filter(Boolean))];
 }
 
 function isDeletedCoachName(name) {
@@ -2861,6 +2917,49 @@ function datedBeforeOrOn(dateStr, cutoffIso) {
   return !dateStr || dateStr <= cutoffIso;
 }
 
+function studentSpeakingTestRows(s, cutoffIso) {
+  const studentKeys = getStudentNameKeys(s);
+  if (!studentKeys.length) return [];
+  const rows = [];
+  DB.allCoaches().forEach(coach => {
+    getCoachSpeakingTestEntries(coach)
+      .filter(entry => datedBeforeOrOn(entry.date, cutoffIso) && studentKeys.includes(accessKey(entry.label || '')))
+      .forEach(entry => {
+        rows.push([
+          coach.name || '',
+          entry.date || '',
+          entry.type || 'Other Speaking Test',
+          entry.minutes || '',
+          entry.notes || ''
+        ]);
+      });
+  });
+  return rows.sort((a, b) => (a[1] || '').localeCompare(b[1] || '') || (a[0] || '').localeCompare(b[0] || ''));
+}
+
+function studentCoachBonusRows(s, cutoffIso) {
+  const coachKeys = new Set([
+    accessKey(s.coach || ''),
+    ...(s.coachHistory || []).map(entry => accessKey(entry?.coach || ''))
+  ].filter(Boolean));
+  if (!coachKeys.size) return [];
+  const rows = [];
+  DB.allCoaches().forEach(coach => {
+    if (!coachKeys.has(accessKey(coach.name || ''))) return;
+    getCoachBonusEntries(coach)
+      .filter(entry => datedBeforeOrOn(entry.date, cutoffIso))
+      .forEach(entry => {
+        rows.push([
+          coach.name || '',
+          entry.date || '',
+          entry.description || 'Coach Bonus',
+          formatUsdMoney(entry.amount || 0)
+        ]);
+      });
+  });
+  return rows.sort((a, b) => (a[1] || '').localeCompare(b[1] || '') || (a[0] || '').localeCompare(b[0] || ''));
+}
+
 function studentExportSessionLogRows(s, cutoffIso) {
   const rows = [];
   const programs = programExportList(s);
@@ -2870,7 +2969,10 @@ function studentExportSessionLogRows(s, cutoffIso) {
   ]
     .filter(p => p?.startDate && (p.endDate || isIndefinitePause(p)));
   const combinedPauses = [...new Map(allPauses.map(p => [p.id, p])).values()];
-  const withdrawalDate = s.withdrawn && s.withdrawalDate ? s.withdrawalDate : '';
+  const exitDate = getStudentExitDate(s);
+  const exitType = getStudentExitType(s);
+  const exitStatusLabel = exitType === 'churn' ? 'Churned' : 'Withdrawn';
+  const exitReason = getStudentExitReason(s);
 
   programs.forEach(p => {
     const prog = p.obj;
@@ -2895,8 +2997,8 @@ function studentExportSessionLogRows(s, cutoffIso) {
       if (cutoffIso && dateISO > cutoffIso) break;
 
       const weekNum = Math.ceil(dayNum / 7);
-      if (withdrawalDate && !withdrawnLogged && dateISO >= withdrawalDate) {
-        rows.push([p.label, getProgramType(prog).label, 'Withdrawal', `Day ${dayNum}`, dateISO, weekNum, '', 'Withdrawn', '', getCoachOnDate(s, dateISO) || s.coach || '', '', '', '', s.withdrawalReason || '', '', '']);
+      if (exitDate && !withdrawnLogged && dateISO >= exitDate) {
+        rows.push([p.label, getProgramType(prog).label, exitType === 'churn' ? 'Churn' : 'Withdrawal', `Day ${dayNum}`, dateISO, weekNum, '', exitStatusLabel, '', getCoachOnDate(s, dateISO) || s.coach || '', '', '', '', exitReason || '', '', '']);
         withdrawnLogged = true;
         break;
       }
@@ -2976,11 +3078,13 @@ function studentWorkbook(s, downloadedAtLabel, exportThroughLabel, cutoffIso) {
     ['Type of Spanish', formatSpanishType(s.typeOfSpanish) || ''],
     ['Program Number', s.programNum ? `${ordinal(s.programNum)} Program` : ''],
     ['Program Type', getProgramType(s).label],
-    ['Status', s.withdrawn ? 'Withdrawn' : 'Active'],
+    ['Status', getStudentStatusLabel(s)],
     ['Program Start', isProgramStartPending(s) ? 'Pending' : (s.programStartDate || '')],
     ['Schedule', s.schedule || ''],
     ['Study Plan', s.studyPlanLink || ''],
     ['Goals', s.goals || ''],
+    ['Churn Date', s.churnDate || ''],
+    ['Churn Reason', s.churnReason || ''],
     ['Withdrawal Date', s.withdrawalDate || ''],
     ['Withdrawal Reason', s.withdrawalReason || '']
   ];
@@ -2998,6 +3102,18 @@ function studentWorkbook(s, downloadedAtLabel, exportThroughLabel, cutoffIso) {
   sections.push(backupTable('Coach Checklist', ['Item', 'Completed'], Object.keys(checklist).map(key => [key, checklist[key] ? 'Yes' : 'No'])));
 
   sections.push(backupTable(
+    'Speaking Test Results',
+    ['Coach', 'Date', 'Type', 'Minutes', 'Notes'],
+    studentSpeakingTestRows(s, cutoffIso)
+  ));
+
+  sections.push(backupTable(
+    'Coach Bonus Data',
+    ['Coach', 'Date', 'Description', 'Amount (USD)'],
+    studentCoachBonusRows(s, cutoffIso)
+  ));
+
+  sections.push(backupTable(
     'Session Log',
     ['Program', 'Program Type', 'Entry Type', 'Day / Marker', 'Date', 'Week', 'Slot', 'Status', 'Missed By', 'Coach', 'Duration', 'Topic', 'Notes', 'Reason', 'Student Notes', 'Auto Note'],
     studentExportSessionLogRows(s, cutoffIso)
@@ -3009,11 +3125,12 @@ function studentWorkbook(s, downloadedAtLabel, exportThroughLabel, cutoffIso) {
 function coachWorkbook(coachName, students, downloadedAtLabel, exportThroughLabel, cutoffIso) {
   const sections = [];
   const key = accessKey(coachName);
-  const currentStudents = students.filter(s => accessKey(s.coach) === key);
+  const coachRecord = getCoachRecordByName(coachName) || { name: coachName, speakingTests: [], invoiceExtras: [] };
+  const currentStudents = students.filter(s => accessKey(s.coach) === key && !isStudentInactive(s));
   const pastStudents = students.filter(s => accessKey(s.coach) !== key && (
     (s.coachHistory || []).some(h => datedBeforeOrOn(h.startDate, cutoffIso) && accessKey(h.coach) === key) ||
     getAllStudentSessions(s).some(sess => datedBeforeOrOn(sess.date, cutoffIso) && accessKey(sess.coach || getCoachOnDate(s, sess.date)) === key)
-  ));
+  ) || (accessKey(s.coach) === key && isStudentInactive(s)));
   const sessionRows = [];
   let attended = 0, reschedule = 0, missed = 0;
 
@@ -3042,6 +3159,8 @@ function coachWorkbook(coachName, students, downloadedAtLabel, exportThroughLabe
   ]));
   sections.push(backupTable('Current Students', ['Student', 'Speaking Level', 'Type of Spanish', 'Program Number', 'Program Start'], currentStudents.map(s => [s.fullName || s.name || '', s.speakingLevel || '', formatSpanishType(s.typeOfSpanish) || '', s.programNum ? `${ordinal(s.programNum)} Program` : '', isProgramStartPending(s) ? 'Pending' : (s.programStartDate || '')])));
   sections.push(backupTable('Previously Coached Students', ['Student', 'Current Coach'], pastStudents.map(s => [s.fullName || s.name || '', s.coach || ''])));
+  sections.push(backupTable('Speaking Test Results', ['Date', 'Student Name', 'Type', 'Minutes', 'Notes'], getCoachSpeakingTestEntries(coachRecord).filter(entry => datedBeforeOrOn(entry.date, cutoffIso)).map(entry => [entry.date || '', entry.label || '', entry.type || 'Other Speaking Test', entry.minutes || '', entry.notes || ''])));
+  sections.push(backupTable('Coach Bonus Data', ['Date', 'Description', 'Amount (USD)'], getCoachBonusEntries(coachRecord).filter(entry => datedBeforeOrOn(entry.date, cutoffIso)).map(entry => [entry.date || '', entry.description || 'Coach Bonus', formatUsdMoney(entry.amount || 0)])));
   sections.push(backupTable('Sessions', ['Student', 'Program', 'Date', 'Status', 'Missed By', 'Duration', 'Topic', 'Notes', 'Reason', 'Student Notes'], sessionRows));
   return backupWorkbook(`Coach - ${coachName}`, sections, downloadedAtLabel, exportThroughLabel);
 }
@@ -3715,6 +3834,9 @@ function buildStudentFromLegacyWorkbook(workbook) {
     studyPlanLink: /^https?:\/\//i.test(studyPlanText) ? studyPlanText : '',
     schedule: '',
     goals,
+    churned: false,
+    churnDate: '',
+    churnReason: '',
     withdrawn: false,
     withdrawalDate: '',
     withdrawalReason: '',
@@ -3880,6 +4002,9 @@ function buildStudentFromImportedWorkbook(workbook) {
     studyPlanLink: normalizeImportCell(profileMap['study plan']),
     schedule: normalizeImportCell(profileMap.schedule),
     goals: normalizeImportCell(profileMap.goals),
+    churned: normalizeImportKey(profileMap.status) === 'churn' || !!normalizeImportedDate(profileMap['churn date']),
+    churnDate: normalizeImportedDate(profileMap['churn date']),
+    churnReason: normalizeImportCell(profileMap['churn reason']),
     withdrawn: normalizeImportKey(profileMap.status) === 'withdrawn' || !!normalizeImportedDate(profileMap['withdrawal date']),
     withdrawalDate: normalizeImportedDate(profileMap['withdrawal date']),
     withdrawalReason: normalizeImportCell(profileMap['withdrawal reason']),
@@ -5264,12 +5389,12 @@ function renderSpeakingTestsView() {
 const GUIDE_CONTENT = {
   admin: {
     title: 'Admin User Guide',
-    subtitle: 'Use this guide to manage students, coaches, speaking tests, imports, backups, and invoices.',
+    subtitle: 'Use this guide to manage students, coaches, speaking tests, imports, backups, invoices, and the in-app guide.',
     highlights: [
-      { label: 'Students', value: 'Create, edit, renew, pause, withdraw, and delete profile sheets.' },
+      { label: 'Students', value: 'Create, edit, renew, pause, withdraw, churn, and delete profile sheets.' },
       { label: 'Coaches', value: 'Add coach profiles, manage bonuses, and control speaking test access.' },
-      { label: 'Downloads', value: 'Export backups and import older student Excel files.' },
-      { label: 'Invoices', value: 'Generate coach payment invoices from logged sessions, speaking tests, and saved billing defaults.' }
+      { label: 'Downloads', value: 'Export backups and import older student Excel files, including speaking test and bonus data in backups.' },
+      { label: 'Invoices', value: 'Generate coach payment invoices from logged sessions, speaking tests, bonuses, extras, and saved billing defaults.' }
     ],
     sections: [
       {
@@ -5293,7 +5418,7 @@ const GUIDE_CONTENT = {
         items: [
           { title: 'Renewals', body: 'Use Renew Program to move a student into the next program while carrying forward any extra completed sessions automatically.' },
           { title: 'Edit later-program dates', body: 'Use Edit Date beside the title of the 2nd program, 3rd program, and later programs whenever a start date needs correction.' },
-          { title: 'Pauses and withdrawal', body: 'Use Program Pause to block out planned breaks. Use Withdrawal when a student stops the program and Undo Withdrawal if they return.' }
+          { title: 'Pauses and exit statuses', body: 'Use Program Pause to block out planned breaks. Use Withdrawal or Churn when a student leaves, and use the matching undo action if the record needs to be restored.' }
         ]
       },
       {
@@ -5309,14 +5434,15 @@ const GUIDE_CONTENT = {
         items: [
           { title: 'Coach profiles', body: 'Use the Coaches tab to add, rename, or remove coach profiles. Student assignments should point to an existing coach profile.' },
           { title: 'Coach bonuses and speaking test access', body: 'From the Coaches tab, admins can record coach bonuses with date and amount, and can turn speaking test access on or off for selected coaches.' },
-          { title: 'Coach visibility', body: 'Coaches only see the students assigned to them, plus their own attendance totals and accessible profile actions.' },
-          { title: 'Attendance tab', body: 'Use the Attendance tab to review Attended, Reschedule, and Missed counts with search and date filters.' }
+          { title: 'Coach visibility', body: 'Coaches see current students plus previously coached students who were reassigned, withdrawn, or churned. Previous-coach access is limited to the date range they handled.' },
+          { title: 'Attendance tab', body: 'Use the Attendance tab to review Attended, Reschedule, and Missed counts with search and date filters. Previously coached students are labeled clearly and only show the handled period.' }
         ]
       },
       {
         title: '6. Backups and Imports',
         items: [
           { title: 'Download backups', body: 'The Download tab exports a ZIP with one spreadsheet per student and one spreadsheet per coach, plus a Last Downloaded timestamp.' },
+          { title: 'Backup content', body: 'Student and coach backup files now include speaking test results, and coach backup files also include coach bonus data.' },
           { title: 'Import older workbooks', body: 'Import Student Excel reads one historical student workbook and rebuilds the student profile in the app.' },
           { title: 'Coach matching during import', body: 'Imports only use coach names that already exist in the app. If no coach match is found, the coach field stays blank so you can assign it manually.' }
         ]
@@ -5326,6 +5452,7 @@ const GUIDE_CONTENT = {
         items: [
           { title: 'Select coach and month', body: 'Open the Invoice Generator tab, choose the coach, then select the billing month you want to invoice.' },
           { title: 'Save billing defaults', body: 'Enter or update the coach address, contact details, rate, and payment information. Save those details so future invoices auto-fill from the latest version.' },
+          { title: 'Payment fields', body: 'Payment defaults can include account number, routing number, IBAN, and SWIFT Code. Empty payment fields stay hidden in the generated invoice.' },
           { title: 'Manual additions', body: 'Use the manual invoice entries panel to add fixed bonuses or extra tasks for the selected month. Coach bonuses saved in the Coaches tab also flow into invoices automatically.' },
           { title: 'Generate PDF invoice', body: 'The invoice is calculated dynamically from that coach’s logged sessions, speaking test work, and saved extras for the selected month, then downloads as a PDF using the standard invoice layout.' }
         ]
@@ -5334,6 +5461,7 @@ const GUIDE_CONTENT = {
         title: '8. Speaking Tests',
         items: [
           { title: 'Separate workflow', body: 'Use the Speaking Tests tab to log speaking test work separately from student profile sheets, attendance, and general coach session totals.' },
+          { title: 'Task types', body: 'Each speaking test entry can be marked as Onboarding, Midterm Exam, Final Exam, or Other Speaking Test.' },
           { title: 'Monthly totals', body: 'Filter by month to review the coach’s total minutes, task count, and average minutes for speaking test work.' },
           { title: 'Invoice link', body: 'Speaking test entries for the selected invoice month are combined into one invoice line item so the month’s total time is easy to review and bill.' }
         ]
@@ -5342,8 +5470,15 @@ const GUIDE_CONTENT = {
         title: '9. Admin Permissions',
         items: [
           { title: 'Delete access', body: 'Only admins can delete student profile sheets and coach profiles.' },
-          { title: 'Sensitive changes', body: 'Use extra care when changing start dates, importing history, or deleting records because those actions affect reporting and carry-over counts.' },
+          { title: 'Sensitive changes', body: 'Use extra care when changing start dates, importing history, deleting records, or setting Withdrawal/Churn because those actions affect reporting and carry-over counts.' },
           { title: 'Recovery view', body: 'If an older profile cannot render normally, the recovery view still lets an admin review key details and remove the student if needed.' }
+        ]
+      },
+      {
+        title: '10. User Guide',
+        items: [
+          { title: 'Edit in app', body: 'Open the User Guide tab as an admin and use Edit This Guide to update the embedded admin or coach guide directly from the app.' },
+          { title: 'Missing features', body: 'If a new workflow is added to the app, update the guide so the team can find it without leaving the tool.' }
         ]
       }
     ]
@@ -5352,7 +5487,7 @@ const GUIDE_CONTENT = {
     title: 'Coach User Guide',
     subtitle: 'Use this guide to manage your assigned students, log sessions, and keep attendance up to date.',
     highlights: [
-      { label: 'My Students', value: 'Coaches only see students assigned to their own coach profile.' },
+      { label: 'My Students', value: 'Coaches see current students plus previously coached students with limited-history access.' },
       { label: 'Session Logging', value: 'Log, edit, and review sessions directly from each student calendar.' },
       { label: 'Attendance', value: 'Use filters to review attended, rescheduled, and missed sessions.' },
       { label: 'Speaking Tests', value: 'Selected coaches can log speaking test work in its own monthly section.' }
@@ -5361,9 +5496,9 @@ const GUIDE_CONTENT = {
       {
         title: '1. What You Can Access',
         items: [
-          { title: 'Assigned students only', body: 'The Students dashboard shows only the students linked to your coach profile.' },
+          { title: 'Current and previous students', body: 'The Students dashboard shows your current students and a separate list of previously coached students who were reassigned, withdrawn, or churned.' },
           { title: 'Coach-safe actions', body: 'You can open profile sheets, log sessions, edit saved sessions, and use allowed date tools for later programs.' },
-          { title: 'Restricted actions', body: 'Coaches do not manage coach profiles, downloads, student deletion, renewals, or withdrawals.' }
+          { title: 'Restricted actions', body: 'Coaches do not manage coach profiles, downloads, student deletion, renewals, withdrawals, or churn actions.' }
         ]
       },
       {
@@ -5395,6 +5530,7 @@ const GUIDE_CONTENT = {
         items: [
           { title: 'Summary counts', body: 'Use the Attendance tab to check attended, rescheduled, and missed counts for your students.' },
           { title: 'Search and date filters', body: 'Use the student search and date range tools to narrow the report to the students and time period you need.' },
+          { title: 'Previous-coach visibility', body: 'Previously coached students are labeled clearly in Attendance, and their data is limited to the period you handled them.' },
           { title: 'Check the session log', body: 'If a count looks off, open the student profile and review the saved session entries on the calendar.' }
         ]
       },
@@ -5403,13 +5539,14 @@ const GUIDE_CONTENT = {
         items: [
           { title: 'Access by admin', body: 'If your coach profile has speaking test access enabled, you will see a separate Speaking Tests tab in the menu.' },
           { title: 'Separate from student sessions', body: 'Speaking test entries are logged in their own section and do not change student profile calendars or attendance totals.' },
+          { title: 'Task types', body: 'When you log a speaking test entry, choose the correct Type and add the student name so the work is categorized correctly.' },
           { title: 'Monthly tracking', body: 'Use the month filter to review your logged tasks and total minutes for that month.' }
         ]
       },
       {
         title: '7. When You Need Admin Help',
         items: [
-          { title: 'Profile details', body: 'Ask an admin to update missing coach assignments, student profile fields, renewals, pauses, withdrawals, or imports.' },
+          { title: 'Profile details', body: 'Ask an admin to update missing coach assignments, student profile fields, renewals, pauses, withdrawals, churn statuses, or imports.' },
           { title: 'Coach assignment problems', body: 'If you cannot see a student you should be coaching, ask an admin to confirm the student is assigned to your coach profile.' },
           { title: 'Record cleanup', body: 'If a workbook import or older profile looks unusual, flag it for admin review before continuing with manual edits.' }
         ]
@@ -5433,29 +5570,71 @@ function guideText(obj, key, fallback = '') {
   return fallback;
 }
 
+function mergeGuideHighlights(rawHighlights, fallbackHighlights) {
+  const normalized = Array.isArray(rawHighlights)
+    ? rawHighlights.map(card => ({
+        label: guideText(card, 'label', ''),
+        value: guideText(card, 'value', '')
+      }))
+    : [];
+  const seen = new Set(normalized.map(card => guideText(card, 'label', '').trim().toLowerCase()).filter(Boolean));
+  (fallbackHighlights || []).forEach(card => {
+    const key = guideText(card, 'label', '').trim().toLowerCase();
+    if (!key || seen.has(key)) return;
+    normalized.push(cloneGuideContent(card));
+    seen.add(key);
+  });
+  return normalized;
+}
+
+function mergeGuideItems(rawItems, fallbackItems) {
+  const normalized = Array.isArray(rawItems)
+    ? rawItems.map(item => ({
+        title: guideText(item, 'title', ''),
+        body: guideText(item, 'body', '')
+      }))
+    : [];
+  const seen = new Set(normalized.map(item => guideText(item, 'title', '').trim().toLowerCase()).filter(Boolean));
+  (fallbackItems || []).forEach(item => {
+    const key = guideText(item, 'title', '').trim().toLowerCase();
+    if (!key || seen.has(key)) return;
+    normalized.push(cloneGuideContent(item));
+    seen.add(key);
+  });
+  return normalized;
+}
+
+function mergeGuideSections(rawSections, fallbackSections) {
+  const normalized = Array.isArray(rawSections)
+    ? rawSections.map(section => ({
+        title: guideText(section, 'title', ''),
+        items: mergeGuideItems(section?.items, [])
+      }))
+    : [];
+  const byTitle = new Map(normalized.map(section => [guideText(section, 'title', '').trim().toLowerCase(), section]));
+  (fallbackSections || []).forEach(section => {
+    const key = guideText(section, 'title', '').trim().toLowerCase();
+    if (!key) return;
+    const existing = byTitle.get(key);
+    if (existing) {
+      existing.items = mergeGuideItems(existing.items, section.items || []);
+    } else {
+      const cloned = cloneGuideContent(section);
+      normalized.push(cloned);
+      byTitle.set(key, cloned);
+    }
+  });
+  return normalized;
+}
+
 function normalizeGuideRoleContent(defaultRole, rawRole) {
   const fallback = GUIDE_CONTENT[defaultRole];
   if (!rawRole || typeof rawRole !== 'object') return cloneGuideContent(fallback);
   return {
     title: guideText(rawRole, 'title', fallback.title),
     subtitle: guideText(rawRole, 'subtitle', fallback.subtitle),
-    highlights: Array.isArray(rawRole.highlights)
-      ? rawRole.highlights.map(card => ({
-          label: guideText(card, 'label', ''),
-          value: guideText(card, 'value', '')
-        }))
-      : cloneGuideContent(fallback.highlights),
-    sections: Array.isArray(rawRole.sections)
-      ? rawRole.sections.map(section => ({
-          title: guideText(section, 'title', ''),
-          items: Array.isArray(section.items)
-            ? section.items.map(item => ({
-                title: guideText(item, 'title', ''),
-                body: guideText(item, 'body', '')
-              }))
-            : []
-        }))
-      : cloneGuideContent(fallback.sections)
+    highlights: mergeGuideHighlights(rawRole.highlights, fallback.highlights),
+    sections: mergeGuideSections(rawRole.sections, fallback.sections)
   };
 }
 
@@ -6311,7 +6490,7 @@ function renderDashboard() {
       const endDate = startDate ? addDaysToIso(startDate, Logic.totalDays(currProg) - 1) : '';
       const allPauses = [...(s.pauses || []), ...(s.renewals || []).flatMap(r => r.pauses || [])];
       const isPaused = allPauses.some(p => pauseContainsDate(p, todayStr));
-      const statusOrder = s.withdrawn ? 3 : done >= total && total > 0 ? 2 : isPaused ? 1 : 0;
+      const statusOrder = isStudentChurned(s) ? 4 : isStudentWithdrawn(s) ? 3 : done >= total && total > 0 ? 2 : isPaused ? 1 : 0;
       const coachAccess = isCoach ? getCoachStudentAccess(s, _coachName) : null;
 
       return {
@@ -6383,8 +6562,10 @@ function renderDashboard() {
       const allDone = done >= total && total > 0;
       const allPauses = [...(s.pauses || []), ...(s.renewals || []).flatMap(r => r.pauses || [])];
       const isPaused = allPauses.some(p => pauseContainsDate(p, todayStr));
-      const statusBadge = s.withdrawn
-        ? `<span class="badge badge-withdrawn" style="white-space:nowrap">Withdrawn</span>`
+      const statusBadge = isStudentChurned(s)
+        ? `<span class="badge badge-churn" style="white-space:nowrap">Churn</span>`
+        : isStudentWithdrawn(s)
+          ? `<span class="badge badge-withdrawn" style="white-space:nowrap">Withdrawn</span>`
         : allDone
           ? `<span class="badge" style="background:#DCFCE7;color:#14532D;border:1px solid #86EFAC;white-space:nowrap">Complete</span>`
           : isPaused
@@ -6463,8 +6644,8 @@ function renderDashboard() {
       return;
     }
 
-    const currentStudents = withMeta.filter(meta => meta.isCurrentCoach && !meta.s.withdrawn);
-    const previousStudents = withMeta.filter(meta => !meta.isCurrentCoach || meta.s.withdrawn);
+const currentStudents = withMeta.filter(meta => meta.isCurrentCoach && !isStudentInactive(meta.s));
+const previousStudents = withMeta.filter(meta => !meta.isCurrentCoach || isStudentInactive(meta.s));
     let filtersPlaced = false;
 
     const buildCoachSection = (title, subtitle, items, emptyMessage, marginTop = 0) => {
@@ -6494,7 +6675,7 @@ function renderDashboard() {
       )}
       ${buildCoachSection(
         'Previously Coached Students',
-        'Students you coached before they were reassigned or withdrawn.',
+'Students you coached before they were reassigned, withdrawn, or churned.',
         previousStudents,
         'No previously coached students match the current filters.',
         16
@@ -6559,16 +6740,21 @@ function renderStudent(id) {
   const checksDone = checks.filter(c => s.checklist[c.k]).length;
 
   let alert = '';
-  if (s.withdrawn) {
-    const wdDate = s.withdrawalDate ? ` on ${fmtDate(s.withdrawalDate)}` : '';
-    const wdReason = s.withdrawalReason ? `<br><span style="font-size:12px;margin-top:3px;display:inline-block">Reason: ${esc(s.withdrawalReason)}</span>` : '';
+  if (isStudentInactive(s)) {
+    const exitType = getStudentExitType(s);
+    const exitDate = getStudentExitDate(s);
+    const exitReason = getStudentExitReason(s);
+    const exitTitle = exitType === 'churn' ? 'Student Churned' : 'Student Withdrawn';
+    const exitSummary = exitType === 'churn' ? 'This student has been marked as churn.' : 'This student withdrew from the program.';
+    const exitDateText = exitDate ? ` on ${fmtDate(exitDate)}` : '';
+    const exitReasonHtml = exitReason ? `<br><span style="font-size:12px;margin-top:3px;display:inline-block">Reason: ${esc(exitReason)}</span>` : '';
     alert = `<div class="alert alert-danger" style="justify-content:space-between">
       <div style="display:flex;align-items:flex-start;gap:12px">
         <span class="alert-icon">!</span>
-        <div class="alert-body"><strong>Student Withdrawn${wdDate}</strong>
-        <span>This student withdrew from the program.${wdReason}</span></div>
+        <div class="alert-body"><strong>${exitTitle}${exitDateText}</strong>
+        <span>${exitSummary}${exitReasonHtml}</span></div>
       </div>
-      ${canManageStudent ? `<button class="btn btn-xs" style="flex-shrink:0;background:white;border:1px solid #FECACA;color:#991B1B;margin-left:12px;align-self:flex-start" onclick="openWithdrawModal('${s.id}', true)">Edit</button>` : ''}
+      ${canManageStudent ? `<button class="btn btn-xs" style="flex-shrink:0;background:white;border:1px solid #FECACA;color:#991B1B;margin-left:12px;align-self:flex-start" onclick="${exitType === 'churn' ? `openChurnModal('${s.id}', true)` : `openWithdrawModal('${s.id}', true)`}">Edit</button>` : ''}
     </div>`;
   } else if (done === total && total > 0) {
     alert = `<div class="alert alert-success">
@@ -6628,9 +6814,14 @@ function renderStudent(id) {
           ${canManageStudent ? `<button class="btn btn-secondary btn-sm" onclick="openStudentForm('${s.id}')">Edit Profile</button>` : ''}
           ${canManageStudent ? `<button class="btn btn-secondary btn-sm" onclick="startNewProgram('${s.id}')">Renew Program</button>` : ''}
           ${canManageStudent
-            ? (s.withdrawn
+            ? (isStudentChurned(s)
+              ? `<button class="btn btn-secondary btn-sm" onclick="undoChurn('${s.id}')">Undo Churn</button>`
+              : isStudentWithdrawn(s)
               ? `<button class="btn btn-secondary btn-sm" onclick="undoWithdrawal('${s.id}')">Undo Withdrawal</button>`
-              : `<button class="btn btn-sm" style="background:#6B7280;color:white;border:none" onclick="openWithdrawModal('${s.id}')">Withdraw</button>`)
+              : `<div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="btn btn-sm" style="background:#6B7280;color:white;border:none" onclick="openWithdrawModal('${s.id}')">Withdraw</button>
+                  <button class="btn btn-sm" style="background:#991B1B;color:white;border:none" onclick="openChurnModal('${s.id}')">Churn</button>
+                </div>`)
             : ''}
           ${canManageStudent ? `<button class="btn btn-danger btn-sm" onclick="askDeleteStudent('${s.id}')">Delete</button>` : ''}
         </div>
@@ -7126,8 +7317,9 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
   let rows = '';
   let lastRenderedDayNum = 0;
 
-  // Withdrawal: if student withdrew during this program's range, note it
-  const withdrawDate = (s.withdrawn && s.withdrawalDate) ? s.withdrawalDate : null;
+  // Exit status: if student withdrew or churned during this program's range, note it
+  const withdrawDate = getStudentExitDate(s) || null;
+  const exitType = getStudentExitType(s);
   let withdrawnInserted = false;
 
   for (let dayNum = 1; dayNum <= totalDays; dayNum++) {
@@ -7137,16 +7329,17 @@ function buildDaySessionLog(s, programIdx = 0, totalPrograms = 1, overflowMap = 
     const isVisibleDay = !visibleWindows || isDateWithinCoachWindows(dateISO, visibleWindows);
     if (!isVisibleDay) continue;
 
-    // Insert withdrawal banner at the first day on/after the withdrawal date (within this program)
+    // Insert exit banner at the first day on/after the exit date (within this program)
     if (withdrawDate && !withdrawnInserted && dateISO >= withdrawDate) {
       const wdStr = new Date(withdrawDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-      const wdReason = s.withdrawalReason ? ` - ${esc(s.withdrawalReason)}` : '';
+      const wdReason = getStudentExitReason(s) ? ` - ${esc(getStudentExitReason(s))}` : '';
+      const wdTitle = exitType === 'churn' ? 'Student Churned' : 'Student Withdrawn';
       rows += `<tr>
         <td colspan="3" style="padding:16px 20px;background:#F3F4F6;border-top:3px solid #D1D5DB;border-bottom:3px solid #D1D5DB">
           <div style="display:flex;align-items:center;gap:12px">
             <span style="font-size:18px;color:#6B7280">&times;</span>
             <div>
-              <div style="font-size:14px;font-weight:700;color:#374151">Student Withdrawn</div>
+              <div style="font-size:14px;font-weight:700;color:#374151">${wdTitle}</div>
               <div style="font-size:12px;color:#6B7280;margin-top:2px">${wdStr}${wdReason}</div>
             </div>
           </div>
@@ -8155,32 +8348,63 @@ document.getElementById('btn-save-pause').addEventListener('click', () => {
   }
 });
 
-// â”€â”€â”€ WITHDRAWAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€â”€ STUDENT EXIT STATUS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let withdrawCtxId = null;
+let studentStatusActionMode = 'withdraw';
 
-function openWithdrawModal(studentId, isEdit = false) {
-  if (!isAdminUser()) { alert('Only admins can manage student withdrawals.'); return; }
+function openStudentStatusModal(studentId, mode = 'withdraw', isEdit = false) {
+  if (!isAdminUser()) { alert(`Only admins can manage student ${mode === 'churn' ? 'churn' : 'withdrawal'} statuses.`); return; }
   withdrawCtxId = studentId;
+  studentStatusActionMode = mode === 'churn' ? 'churn' : 'withdraw';
   const s = DB.get(studentId);
-  document.getElementById('withdraw-date').value = (isEdit && s?.withdrawalDate) ? s.withdrawalDate : localDateStr(new Date());
-  document.getElementById('withdraw-reason').value = (isEdit && s?.withdrawalReason) ? s.withdrawalReason : '';
-  document.querySelector('#modal-withdraw .modal-title').textContent = isEdit ? 'Edit Withdrawal' : 'Withdraw Student';
+  const isChurn = studentStatusActionMode === 'churn';
+  const existingDate = isChurn ? (s?.churnDate || '') : (s?.withdrawalDate || '');
+  const existingReason = isChurn ? (s?.churnReason || '') : (s?.withdrawalReason || '');
+  document.getElementById('withdraw-date').value = (isEdit && existingDate) ? existingDate : localDateStr(new Date());
+  document.getElementById('withdraw-reason').value = (isEdit && existingReason) ? existingReason : '';
+  document.querySelector('#modal-withdraw .modal-title').textContent = isEdit ? (isChurn ? 'Edit Churn Status' : 'Edit Withdrawal') : (isChurn ? 'Mark Student as Churn' : 'Withdraw Student');
+  document.getElementById('status-action-message').textContent = isChurn
+    ? 'Mark this student as churned. Their session history will be preserved.'
+    : 'Mark this student as withdrawn from the program. Their session history will be preserved.';
+  document.getElementById('status-action-date-label').textContent = isChurn ? 'Churn Date *' : 'Withdrawal Date *';
+  document.getElementById('status-action-reason-label').textContent = isChurn ? 'Churn Reason' : 'Reason';
+  document.getElementById('btn-confirm-status-action').textContent = isChurn ? 'Confirm Churn' : 'Confirm Withdrawal';
   openModal('modal-withdraw');
 }
 
-function saveWithdrawal() {
+function openWithdrawModal(studentId, isEdit = false) {
+  openStudentStatusModal(studentId, 'withdraw', isEdit);
+}
+
+function openChurnModal(studentId, isEdit = false) {
+  openStudentStatusModal(studentId, 'churn', isEdit);
+}
+
+function saveStudentStatusAction() {
   if (!isAdminUser()) return;
   const s = DB.get(withdrawCtxId);
   if (!s) return;
   const date = document.getElementById('withdraw-date').value;
   if (!date) { document.getElementById('withdraw-date').style.borderColor = '#DC2626'; return; }
-  s.withdrawn = true;
-  s.withdrawalDate = date;
-  s.withdrawalReason = document.getElementById('withdraw-reason').value.trim();
+  const reason = document.getElementById('withdraw-reason').value.trim();
+  clearStudentExitStatus(s);
+  if (studentStatusActionMode === 'churn') {
+    s.churned = true;
+    s.churnDate = date;
+    s.churnReason = reason;
+  } else {
+    s.withdrawn = true;
+    s.withdrawalDate = date;
+    s.withdrawalReason = reason;
+  }
   DB.upsert(s);
   closeModal('modal-withdraw');
   renderStudent(withdrawCtxId);
   renderDashboard();
+}
+
+function saveWithdrawal() {
+  saveStudentStatusAction();
 }
 
 function undoWithdrawal(studentId) {
@@ -8190,6 +8414,18 @@ function undoWithdrawal(studentId) {
   s.withdrawn = false;
   s.withdrawalDate = '';
   s.withdrawalReason = '';
+  DB.upsert(s);
+  renderStudent(studentId);
+  renderDashboard();
+}
+
+function undoChurn(studentId) {
+  if (!isAdminUser()) return;
+  const s = DB.get(studentId);
+  if (!s) return;
+  s.churned = false;
+  s.churnDate = '';
+  s.churnReason = '';
   DB.upsert(s);
   renderStudent(studentId);
   renderDashboard();
