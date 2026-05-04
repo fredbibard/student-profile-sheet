@@ -6388,6 +6388,7 @@ function goStudent(id) {
 // â”€â”€â”€ DASHBOARD SORT STATE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const dashSort = { col: null, dir: 'asc' };
 const studentDateFilters = { lastFrom: '', lastTo: '', startFrom: '', startTo: '', endFrom: '', endTo: '' };
+let studentStatusFilter = '';
 function setDashSort(col) {
   if (dashSort.col === col) {
     dashSort.dir = dashSort.dir === 'asc' ? 'desc' : 'asc';
@@ -6406,6 +6407,19 @@ function hasStudentDateFilters(filters = getStudentDateFilters()) {
   return Object.values(filters).some(Boolean);
 }
 
+function getStudentStatusFilter() {
+  return studentStatusFilter;
+}
+
+function setStudentStatusFilter(value) {
+  studentStatusFilter = value || '';
+  renderDashboard();
+}
+
+function hasStudentFilters(filters = getStudentDateFilters()) {
+  return hasStudentDateFilters(filters) || !!getStudentStatusFilter();
+}
+
 function isDateInRange(dateStr, from, to) {
   if (!from && !to) return true;
   if (!dateStr) return false;
@@ -6416,6 +6430,7 @@ function isDateInRange(dateStr, from, to) {
 
 function clearStudentDateFilters() {
   Object.keys(studentDateFilters).forEach(key => { studentDateFilters[key] = ''; });
+  studentStatusFilter = '';
   renderDashboard();
 }
 
@@ -6491,6 +6506,15 @@ function renderDashboard() {
       const allPauses = [...(s.pauses || []), ...(s.renewals || []).flatMap(r => r.pauses || [])];
       const isPaused = allPauses.some(p => pauseContainsDate(p, todayStr));
       const statusOrder = isStudentChurned(s) ? 4 : isStudentWithdrawn(s) ? 3 : done >= total && total > 0 ? 2 : isPaused ? 1 : 0;
+      const statusKey = isStudentChurned(s)
+        ? 'churn'
+        : isStudentWithdrawn(s)
+          ? 'withdrawn'
+          : done >= total && total > 0
+            ? 'complete'
+            : isPaused
+              ? 'paused'
+              : 'active';
       const coachAccess = isCoach ? getCoachStudentAccess(s, _coachName) : null;
 
       return {
@@ -6504,6 +6528,7 @@ function renderDashboard() {
         startPending,
         endDate,
         statusOrder,
+        statusKey,
         currentProgI,
         isCurrentCoach: coachAccess ? coachAccess.isCurrent : false
       };
@@ -6511,16 +6536,18 @@ function renderDashboard() {
 
     const dateFilters = getStudentDateFilters();
     const hasDateFilters = hasStudentDateFilters(dateFilters);
-    if (hasDateFilters) {
+    const statusFilter = getStudentStatusFilter();
+    if (hasDateFilters || statusFilter) {
       withMeta = withMeta.filter(x =>
         isDateInRange(x.lastSessDate, dateFilters.lastFrom, dateFilters.lastTo) &&
         isDateInRange(x.startDate, dateFilters.startFrom, dateFilters.startTo) &&
-        isDateInRange(x.endDate, dateFilters.endFrom, dateFilters.endTo)
+        isDateInRange(x.endDate, dateFilters.endFrom, dateFilters.endTo) &&
+        (!statusFilter || x.statusKey === statusFilter)
       );
     }
 
     if (!withMeta.length) {
-      grid.innerHTML = `<div class="empty-state"><div class="ei">&bull;</div><h3>No results found</h3><p>No students match the current ${hasDateFilters ? 'date filters' : 'filters'}.</p>${hasDateFilters ? '<button class="btn btn-secondary btn-sm" onclick="clearStudentDateFilters()" style="margin-top:10px">Clear Date Filters</button>' : ''}</div>`;
+      grid.innerHTML = `<div class="empty-state"><div class="ei">&bull;</div><h3>No results found</h3><p>No students match the current ${hasStudentFilters(dateFilters) ? 'filters' : 'view'}.</p>${hasStudentFilters(dateFilters) ? '<button class="btn btn-secondary btn-sm" onclick="clearStudentDateFilters()" style="margin-top:10px">Clear Filters</button>' : ''}</div>`;
       return;
     }
 
@@ -6608,21 +6635,32 @@ function renderDashboard() {
       </tr>`;
     };
 
-    const th = (txt, col, includeFilters = true) => {
-      const active = dashSort.col === col;
-      const arrow = active ? (dashSort.dir === 'asc' ? ' &#9650;' : ' &#9660;') : ' <span style="opacity:.25">&#8597;</span>';
-      const dateFilterMap = {
-        last: ['lastFrom', 'lastTo', 'Last session'],
-        start: ['startFrom', 'startTo', 'Start date'],
-        end: ['endFrom', 'endTo', 'End date']
-      };
-      const dateFilter = includeFilters ? dateFilterMap[col] : null;
-      const filterHTML = dateFilter ? `
+      const th = (txt, col, includeFilters = true) => {
+        const active = dashSort.col === col;
+        const arrow = active ? (dashSort.dir === 'asc' ? ' &#9650;' : ' &#9660;') : ' <span style="opacity:.25">&#8597;</span>';
+        const dateFilterMap = {
+          last: ['lastFrom', 'lastTo', 'Last session'],
+          start: ['startFrom', 'startTo', 'Start date'],
+          end: ['endFrom', 'endTo', 'End date']
+        };
+        const statusFilterHTML = includeFilters && col === 'status' ? `
+          <div onclick="event.stopPropagation()" style="margin-top:6px;min-width:128px">
+            <select onchange="setStudentStatusFilter(this.value)" style="width:100%;border:1px solid var(--gray-300);border-radius:6px;padding:3px 6px;font-family:inherit;font-size:10px;font-weight:600;text-transform:none;letter-spacing:0;background:white;color:var(--gray-700)">
+              <option value="" ${!studentStatusFilter ? 'selected' : ''}>All Statuses</option>
+              <option value="active" ${studentStatusFilter === 'active' ? 'selected' : ''}>Active</option>
+              <option value="paused" ${studentStatusFilter === 'paused' ? 'selected' : ''}>Paused</option>
+              <option value="complete" ${studentStatusFilter === 'complete' ? 'selected' : ''}>Complete</option>
+              <option value="withdrawn" ${studentStatusFilter === 'withdrawn' ? 'selected' : ''}>Withdrawn</option>
+              <option value="churn" ${studentStatusFilter === 'churn' ? 'selected' : ''}>Churn</option>
+            </select>
+          </div>` : '';
+        const dateFilter = includeFilters ? dateFilterMap[col] : null;
+        const filterHTML = dateFilter ? `
         <div onclick="event.stopPropagation()" style="display:flex;gap:4px;margin-top:6px;min-width:154px">
           <input type="date" value="${studentDateFilters[dateFilter[0]]}" onchange="setStudentDateFilter('${dateFilter[0]}', this.value)" title="${dateFilter[2]} from" style="width:74px;min-width:0;border:1px solid var(--gray-300);border-radius:6px;padding:3px 4px;font-family:inherit;font-size:10px;font-weight:500;text-transform:none;letter-spacing:0;background:white;color:var(--gray-700)">
           <input type="date" value="${studentDateFilters[dateFilter[1]]}" onchange="setStudentDateFilter('${dateFilter[1]}', this.value)" title="${dateFilter[2]} to" style="width:74px;min-width:0;border:1px solid var(--gray-300);border-radius:6px;padding:3px 4px;font-family:inherit;font-size:10px;font-weight:500;text-transform:none;letter-spacing:0;background:white;color:var(--gray-700)">
-        </div>` : '';
-      return `<th onclick="setDashSort('${col}')" style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;border-bottom:2px solid var(--gray-200);cursor:pointer;user-select:none;color:${active ? 'var(--green)' : 'var(--gray-500)'};background:${active ? '#FEF2F2' : 'transparent'};transition:background .15s" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='${active ? '#FEF2F2' : 'transparent'}'">
+        </div>` : statusFilterHTML;
+        return `<th onclick="setDashSort('${col}')" style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;border-bottom:2px solid var(--gray-200);cursor:pointer;user-select:none;color:${active ? 'var(--green)' : 'var(--gray-500)'};background:${active ? '#FEF2F2' : 'transparent'};transition:background .15s" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='${active ? '#FEF2F2' : 'transparent'}'">
         <div>${txt}${arrow}</div>${filterHTML}
       </th>`;
     };
