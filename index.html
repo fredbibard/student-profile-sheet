@@ -6667,6 +6667,7 @@ function renderDashboard() {
 
     const buildTable = (items, includeFilters = true) => {
       const rows = items.map(buildRow).join('');
+      const entryCountLabel = `${items.length} entr${items.length === 1 ? 'y' : 'ies'}`;
       return `<div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--gray-200);box-shadow:var(--shadow-sm)"><table style="width:100%;min-width:860px;border-collapse:collapse;background:white">
         <thead style="background:var(--gray-50)">
           <tr>
@@ -6674,7 +6675,8 @@ function renderDashboard() {
           </tr>
         </thead>
         <tbody>${rows}</tbody>
-      </table></div>`;
+      </table></div>
+      <div style="margin-top:10px;font-size:12px;font-weight:700;color:var(--gray-500);text-align:right">${entryCountLabel}</div>`;
     };
 
     if (!isCoach) {
