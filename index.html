@@ -1522,6 +1522,15 @@ function formatCoachWindowsSummary(windows) {
   }).filter(Boolean).join('; ');
 }
 
+function getLastSessionDateInCoachWindows(student, windows) {
+  if (!student || !Array.isArray(windows) || !windows.length) return '';
+  return getAllStudentSessions(student)
+    .filter(session => session?.date && isDateWithinCoachWindows(session.date, windows))
+    .map(session => session.date)
+    .sort()
+    .pop() || '';
+}
+
 function canCurrentUserListStudent(s) {
   if (_userRole !== 'coach') return true;
   return getCoachStudentAccess(s, _coachName).isCurrent;
@@ -2155,9 +2164,30 @@ let pendingDeleteProgramIdx = null;
 const activeProgramCtx = {}; // { studentId: programIdx } 0=original, 1+=renewal
 const collapsedPrograms = {}; // { `${studentId}_${programIdx}`: true }
 
+function defaultProgramCollapsed(student, programIdx) {
+  if (!student) return false;
+  const totalPrograms = 1 + (student.renewals || []).length;
+  if (programIdx >= totalPrograms - 1) return false;
+  const progObj = getProgramObjAt(student, programIdx);
+  const progTotal = Logic.totalSessions(progObj);
+  const progCarry = getProgramCarryOver(student, programIdx);
+  const progDone = Math.min(Math.round((Logic.completed(progObj) + progCarry) * 10) / 10, progTotal);
+  return progDone >= progTotal && progTotal > 0;
+}
+
+function isProgramCollapsed(student, programIdx) {
+  const key = `${student?.id || ''}_${programIdx}`;
+  if (Object.prototype.hasOwnProperty.call(collapsedPrograms, key)) {
+    return !!collapsedPrograms[key];
+  }
+  return defaultProgramCollapsed(student, programIdx);
+}
+
 function toggleProgramCollapse(studentId, programIdx) {
+  const s = DB.get(studentId);
+  if (!s) return;
   const key = `${studentId}_${programIdx}`;
-  collapsedPrograms[key] = !collapsedPrograms[key];
+  collapsedPrograms[key] = !isProgramCollapsed(s, programIdx);
   renderStudent(studentId);
 }
 
@@ -6342,21 +6372,6 @@ function goStudent(id) {
   } else {
     activeProgramCtx[id] = 0;
   }
-  // Auto-collapse completed programs whenever a student profile is opened
-  if (_s) {
-    try {
-      const _total = 1 + (_s.renewals || []).length;
-      for (let _i = 0; _i < _total; _i++) {
-        const _pObj = getProgramObjAt(_s, _i);
-        const _pTotal = Logic.totalSessions(_pObj);
-        const _pCarry = getProgramCarryOver(_s, _i);
-        const _pDone = Math.min(Math.round((Logic.completed(_pObj) + _pCarry) * 10) / 10, _pTotal);
-        collapsedPrograms[`${id}_${_i}`] = _pDone >= _pTotal && _pTotal > 0;
-      }
-    } catch (err) {
-      console.error('Failed to resolve collapsed program state', { studentId: id, error: err, student: _s });
-    }
-  }
 
   document.querySelectorAll('.nav-tab').forEach(el => el.classList.toggle('active', el.dataset.tab === 'students'));
   document.getElementById('view-dashboard').classList.remove('active');
@@ -6516,6 +6531,9 @@ function renderDashboard() {
               ? 'paused'
               : 'active';
       const coachAccess = isCoach ? getCoachStudentAccess(s, _coachName) : null;
+      const lastSessionWithCoachDate = coachAccess?.windows?.length
+        ? getLastSessionDateInCoachWindows(s, coachAccess.windows)
+        : '';
 
       return {
         s,
@@ -6530,7 +6548,8 @@ function renderDashboard() {
         statusOrder,
         statusKey,
         currentProgI,
-        isCurrentCoach: coachAccess ? coachAccess.isCurrent : false
+        isCurrentCoach: coachAccess ? coachAccess.isCurrent : false,
+        lastSessionWithCoachDate
       };
     });
 
@@ -6665,9 +6684,13 @@ function renderDashboard() {
       </th>`;
     };
 
+    const buildEntryCount = count => {
+      const entryCountLabel = `${count} entr${count === 1 ? 'y' : 'ies'}`;
+      return `<div style="margin-top:10px;font-size:12px;font-weight:700;color:var(--gray-500);text-align:right">${entryCountLabel}</div>`;
+    };
+
     const buildTable = (items, includeFilters = true) => {
       const rows = items.map(buildRow).join('');
-      const entryCountLabel = `${items.length} entr${items.length === 1 ? 'y' : 'ies'}`;
       return `<div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--gray-200);box-shadow:var(--shadow-sm)"><table style="width:100%;min-width:860px;border-collapse:collapse;background:white">
         <thead style="background:var(--gray-50)">
           <tr>
@@ -6675,8 +6698,28 @@ function renderDashboard() {
           </tr>
         </thead>
         <tbody>${rows}</tbody>
-      </table></div>
-      <div style="margin-top:10px;font-size:12px;font-weight:700;color:var(--gray-500);text-align:right">${entryCountLabel}</div>`;
+      </table></div>${buildEntryCount(items.length)}`;
+    };
+
+    const buildPreviousCoachTable = items => {
+      const rows = items.map(meta => {
+        const lastDateText = meta.lastSessionWithCoachDate ? fmtDate(meta.lastSessionWithCoachDate) : '-';
+        return `<tr style="border-bottom:1px solid var(--gray-200);cursor:pointer;transition:background .12s" onclick="goStudent('${meta.s.id}')" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
+          <td style="padding:12px 16px;min-width:180px">
+            <div style="font-size:14px;font-weight:700;color:var(--gray-800)">${esc(meta.s.fullName || meta.s.name || 'Unnamed student')}</div>
+          </td>
+          <td style="padding:12px 16px;font-size:12px;color:var(--gray-600);white-space:nowrap">${lastDateText}</td>
+        </tr>`;
+      }).join('');
+      return `<div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--gray-200);box-shadow:var(--shadow-sm)"><table style="width:100%;min-width:420px;border-collapse:collapse;background:white">
+        <thead style="background:var(--gray-50)">
+          <tr>
+            <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;border-bottom:2px solid var(--gray-200);color:var(--gray-500)">Student</th>
+            <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;border-bottom:2px solid var(--gray-200);color:var(--gray-500)">Last Session With You</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table></div>${buildEntryCount(items.length)}`;
     };
 
     if (!isCoach) {
@@ -6688,11 +6731,11 @@ const currentStudents = withMeta.filter(meta => meta.isCurrentCoach && !isStuden
 const previousStudents = withMeta.filter(meta => !meta.isCurrentCoach || isStudentInactive(meta.s));
     let filtersPlaced = false;
 
-    const buildCoachSection = (title, subtitle, items, emptyMessage, marginTop = 0) => {
+    const buildCoachSection = (title, subtitle, items, emptyMessage, marginTop = 0, variant = 'default') => {
       const tableHtml = items.length
-        ? buildTable(items, !filtersPlaced)
+        ? (variant === 'previous' ? buildPreviousCoachTable(items) : buildTable(items, !filtersPlaced))
         : `<div style="background:white;border:1px solid var(--gray-200);border-radius:var(--radius);padding:18px 20px;color:var(--gray-500);box-shadow:var(--shadow-sm)">${emptyMessage}</div>`;
-      if (items.length && !filtersPlaced) filtersPlaced = true;
+      if (items.length && !filtersPlaced && variant !== 'previous') filtersPlaced = true;
 
       return `<div style="margin-top:${marginTop}px;margin-bottom:18px">
         <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap">
@@ -6718,7 +6761,8 @@ const previousStudents = withMeta.filter(meta => !meta.isCurrentCoach || isStude
 'Students you coached before they were reassigned, withdrawn, or churned.',
         previousStudents,
         'No previously coached students match the current filters.',
-        16
+        16,
+        'previous'
       )}`;
   } catch(e) {
     const grid = document.getElementById('students-grid');
@@ -6778,6 +6822,11 @@ function renderStudent(id) {
     { k: 'sessionsAdjusted',  t: 'Sessions were adjusted after 2-3 meetings based on the student\'s preferences, needs, and goals.' }
   ];
   const checksDone = checks.filter(c => s.checklist[c.k]).length;
+  const checklistComplete = checksDone === checks.length;
+  const speakingLevelSelectId = `student-speaking-level-${domSafeId(s.id)}`;
+  const speakingLevelOptions = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+    .map(level => `<option value="${level}" ${s.speakingLevel === level ? 'selected' : ''}>${level}</option>`)
+    .join('');
 
   let alert = '';
   if (isStudentInactive(s)) {
@@ -6982,7 +7031,16 @@ function renderStudent(id) {
 
           <!-- Right column: small details stacked -->
           <div style="display:flex;flex-direction:column;gap:16px">
-            <div class="info-item"><label>Speaking Level</label><p>${esc(s.speakingLevel || '-')}</p></div>
+            <div class="info-item">
+              <label>Speaking Level</label>
+              ${canManageStudent ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px">
+                <select id="${speakingLevelSelectId}" style="min-width:96px">
+                  <option value="">Select...</option>
+                  ${speakingLevelOptions}
+                </select>
+                <button class="btn btn-secondary btn-sm" onclick="updateStudentSpeakingLevel('${s.id}')">Update</button>
+              </div>` : `<p>${esc(s.speakingLevel || '-')}</p>`}
+            </div>
             <div class="info-item"><label>Type of Spanish</label><p>${esc(formatSpanishType(s.typeOfSpanish) || '-')}</p></div>
             <div class="info-item"><label>Program Start</label><p>${formatProgramStart(s)}</p></div>
             <div class="info-item"><label>Schedule</label><p>${esc(s.schedule || '-')}</p></div>
@@ -7013,12 +7071,12 @@ function renderStudent(id) {
     </div>
 
     <!-- Checklist -->
-    <div class="section" id="sec-checklist">
-      <div class="sec-header" onclick="toggleSec('sec-checklist')">
+    <div class="section open" id="sec-checklist">
+      <div class="sec-header" ${checklistComplete ? `onclick="toggleSec('sec-checklist')"` : ''} title="${checklistComplete ? 'Collapse or expand this section' : 'Complete all checklist items before hiding this section'}" style="${checklistComplete ? '' : 'cursor:default'}">
         <span class="sec-title">Coach Checklist <span style="font-weight:400;color:var(--gray-400);font-size:13px">${checksDone}/${checks.length} completed</span></span>
         <span class="sec-toggle">&#9660;</span>
       </div>
-      <div class="sec-body hidden">
+      <div class="sec-body">
         <ul class="checklist">
           ${checks.map(c => `
             <li class="${s.checklist[c.k] ? 'done' : ''}">
@@ -7236,8 +7294,7 @@ function buildAllProgramsLog(s, options = {}) {
     const progTotalCheck = Logic.totalSessions(progObj);
     const progDoneCheck = Math.min(Math.round((Logic.completed(progObj) + progCarryOver) * 10) / 10, progTotalCheck);
     const isCompleted = progDoneCheck >= progTotalCheck && progTotalCheck > 0;
-    const collapseKey = `${s.id}_${prog.programIdx}`;
-    const isCollapsed = isCompleted && !!collapsedPrograms[collapseKey];
+    const isCollapsed = isCompleted && isProgramCollapsed(s, prog.programIdx);
 
     if (totalPrograms > 1 || getProgramNumberBase(s) > 1) {
       const editDateBtn = !readOnly && canEditProgramStartDate(s, prog.programIdx) && (prog.programIdx > 0 || getProgramNumberBase(s) > 1)
@@ -7692,6 +7749,17 @@ function toggleSec(id) {
   const body = sec.querySelector('.sec-body');
   sec.classList.toggle('open');
   body.classList.toggle('hidden');
+}
+
+function updateStudentSpeakingLevel(studentId) {
+  const s = DB.get(studentId);
+  if (!s) return;
+  if (!canCurrentUserManageStudent(s)) return;
+  const select = document.getElementById(`student-speaking-level-${domSafeId(studentId)}`);
+  if (!select) return;
+  s.speakingLevel = select.value || '';
+  DB.upsert(s);
+  renderStudent(studentId);
 }
 
 function toggleWeek(w) {
