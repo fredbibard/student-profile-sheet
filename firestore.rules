@@ -1,0 +1,77 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function hasUserProfile() {
+      return signedIn() && exists(userPath(request.auth.uid));
+    }
+
+    function currentUser() {
+      return get(userPath(request.auth.uid)).data;
+    }
+
+    function isTeam() {
+      return hasUserProfile() && currentUser().role == 'team';
+    }
+
+    function isCoach() {
+      return hasUserProfile() && currentUser().role == 'coach';
+    }
+
+    function currentCoachName() {
+      return isCoach() ? currentUser().coachName : null;
+    }
+
+    function isCurrentCoachForStudent() {
+      return isCoach()
+        && currentCoachName() is string
+        && resource.data.coach == currentCoachName();
+    }
+
+    match /users/{userId} {
+      allow get: if signedIn() && (userId == request.auth.uid || isTeam());
+      allow list: if signedIn();
+      allow create: if signedIn() && (userId == request.auth.uid || isTeam());
+      allow update: if signedIn() && (userId == request.auth.uid || isTeam());
+      allow delete: if isTeam();
+    }
+
+    match /students/{studentId} {
+      allow read: if signedIn();
+      allow create: if isTeam();
+      allow update: if isTeam() || isCurrentCoachForStudent();
+      allow delete: if isTeam();
+    }
+
+    function canCoachUpdateSpeakingTestsOnly() {
+      return isCoach()
+        && currentCoachName() is string
+        && resource.data.name == currentCoachName()
+        && resource.data.speakingTestEnabled == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['speakingTests']);
+    }
+
+    match /coaches/{coachId} {
+      allow read: if signedIn();
+      allow create, delete: if isTeam();
+      allow update: if isTeam() || canCoachUpdateSpeakingTestsOnly();
+    }
+
+    match /meta/{docId} {
+      allow read: if signedIn();
+      allow write: if isTeam();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
